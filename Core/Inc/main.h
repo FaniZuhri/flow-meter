@@ -29,6 +29,7 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 
 #include "stm32g0xx_ll_adc.h"
+#include "stm32g0xx_ll_dma.h"
 #include "stm32g0xx_ll_lptim.h"
 #include "stm32g0xx_ll_lpuart.h"
 #include "stm32g0xx_ll_rcc.h"
@@ -38,7 +39,8 @@ extern "C" {
 #include "stm32g0xx_ll_cortex.h"
 #include "stm32g0xx_ll_utils.h"
 #include "stm32g0xx_ll_pwr.h"
-#include "stm32g0xx_ll_dma.h"
+#include "stm32g0xx_ll_tim.h"
+#include "stm32g0xx_ll_usart.h"
 #include "stm32g0xx_ll_gpio.h"
 
 #if defined(USE_FULL_ASSERT)
@@ -73,6 +75,25 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define DATA_OUT_Pin LL_GPIO_PIN_2
+#define DATA_OUT_GPIO_Port GPIOA
+#define DATA_IN_Pin LL_GPIO_PIN_3
+#define DATA_IN_GPIO_Port GPIOA
+#define SOL1_OUT_Pin LL_GPIO_PIN_4
+#define SOL1_OUT_GPIO_Port GPIOA
+#define SOL2_OUT_Pin LL_GPIO_PIN_5
+#define SOL2_OUT_GPIO_Port GPIOA
+#define TEMP_SEN_IN_Pin LL_GPIO_PIN_6
+#define TEMP_SEN_IN_GPIO_Port GPIOA
+#define PRES_SEN_IN_Pin LL_GPIO_PIN_7
+#define PRES_SEN_IN_GPIO_Port GPIOA
+#define SEN_IN_OPT_Pin LL_GPIO_PIN_8
+#define SEN_IN_OPT_GPIO_Port GPIOA
+#define SEN_IN_Pin LL_GPIO_PIN_12
+#define SEN_IN_GPIO_Port GPIOA
+#define SEN_IN_EXTI_IRQn EXTI4_15_IRQn
+#define DBG_OUT_Pin LL_GPIO_PIN_6
+#define DBG_OUT_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
