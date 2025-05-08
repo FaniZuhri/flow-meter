@@ -5,16 +5,21 @@
  *      Author: Hardware2
  */
 
-#include "uph_scp.h"
 #include <string.h>
+
+#include "uph_scp.h"
+#include "uph_flow_sensor.h"
 
 int scp_test_getter(uint8_t *rx_cmd_buf);
 int scp_test_setter(uint8_t *rx_cmd_buf);
+int scp_sensor_start_sensing(uint8_t *rx_cmd_buf);
+int scp_sensor_get_sensing_flag(uint8_t *rx_cmd_buf);
 
 const scp_command_table_t scp_cmd_tbl[SCP_COMMAND_TABLE_SIZE] = {
-    //Command code      get functions       set functions
-	{'P',               NULL,				NULL},
-	{'Z',				scp_test_getter,	scp_test_setter},
+    //Command code      get functions       			set functions
+	{'P',               NULL,							NULL},
+	{'Z',				scp_test_getter,				scp_test_setter},
+	{'S',				scp_sensor_get_sensing_flag,	scp_sensor_start_sensing},
 };
 
 scp_handle_t scp_handle;
@@ -31,6 +36,17 @@ int scp_test_getter(uint8_t *rx_cmd_buf) {
 }
 
 int scp_test_setter(uint8_t *rx_cmd_buf) {
+	return 0;
+}
+
+int scp_sensor_get_sensing_flag(uint8_t *rx_cmd_buf) {
+	ack_response_fn(*rx_cmd_buf, &is_test_started, 1);
+	return SCP_DATA_RESPPONSE;
+}
+
+int scp_sensor_start_sensing(uint8_t *rx_cmd_buf) {
+	flow_set_test_started(1);
+	flow_set_pulse_count(0);
 	return 0;
 }
 
@@ -144,8 +160,7 @@ static scp_action_command_t scp_check_action_command(uint8_t *from_data_received
 	return SCP_ACTION_COMMAND_INVALID;
 }
 
-void ack_response_fn(uint8_t command)
-{
+void ack_response_fn(uint8_t command, uint8_t *data, uint8_t data_size) {
 	uint8_t ack_buffer_index = 0, tx_idx = 0;
 	uint8_t ack_resp[4U] = "OK!\0";
 
@@ -155,7 +170,12 @@ void ack_response_fn(uint8_t command)
 	lpuart_tx_buf[tx_idx++] = command;
 	lpuart_tx_buf[tx_idx++] = ':';
 
-	ack_buffer_index = fill_data_to_send_buff(ack_resp, lpuart_tx_buf, 0, 3);
+	if (data_size == 0) {
+		ack_buffer_index = fill_data_to_send_buff(ack_resp, lpuart_tx_buf, 0, 3);
+	}
+	else {
+		ack_buffer_index = fill_data_to_send_buff(data, lpuart_tx_buf, 0, 3);
+	}
 
 	lpuart_tx_buf[ack_buffer_index++] = '}';
 	lpuart_tx_buf[ack_buffer_index++] = '\r';
@@ -270,7 +290,7 @@ void scp_cmd_process(void) {
 		}
 
 		else if (scp_exec_command_status == SCP_ACK_RESPONSE) {
-			ack_response_fn(*(data_received));
+			ack_response_fn(*(data_received), NULL, 0);
 			scp_is_busy = 1;
 		}
 
