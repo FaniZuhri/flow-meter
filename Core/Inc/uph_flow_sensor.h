@@ -15,6 +15,15 @@
 
 extern volatile uint32_t pulse_count, last_captured, pulse_frequency;
 extern volatile float flow_rate, total_volume;
+extern uint8_t is_test_started;
+
+__STATIC_INLINE void flow_set_test_started(uint8_t val) {
+	is_test_started = val;
+}
+
+__STATIC_INLINE uint8_t flow_get_test_started(void) {
+	return is_test_started;
+}
 
 __STATIC_INLINE void flow_set_last_captured(uint32_t val) {
 	last_captured = val;

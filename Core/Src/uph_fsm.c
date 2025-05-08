@@ -7,6 +7,7 @@
 
 #include "uph_fsm.h"
 #include "uph_scp.h"
+#include <string.h>
 
 volatile fsm_state_t fsm_state;
 

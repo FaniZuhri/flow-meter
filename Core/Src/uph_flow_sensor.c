@@ -12,3 +12,5 @@ volatile float flow_rate = 0.0;
 volatile float total_volume = 0.0;
 volatile uint32_t last_captured = 0;
 volatile uint32_t pulse_frequency = 0;
+
+uint8_t is_test_started = 0;
