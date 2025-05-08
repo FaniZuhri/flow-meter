@@ -11,7 +11,7 @@
 #include "stm32g0xx_ll_usart.h"
 #include "usart.h"
 
-#define SCP_COMMAND_TABLE_SIZE	2U
+#define SCP_COMMAND_TABLE_SIZE	3U
 
 typedef int (*volatile scp_func_ptr) (uint8_t *);
 
@@ -83,7 +83,7 @@ __STATIC_INLINE void scp_handle_set_rcv_done(uint8_t val) {
 	scp_handle.rcv_done = val;
 }
 
-void ack_response_fn(uint8_t command);
+void ack_response_fn(uint8_t command, uint8_t *data, uint8_t data_size);
 void err_response_fn(uint8_t command);
 void nak_response_fn(uint8_t command);
 uint8_t *itoa(uint16_t value, uint8_t *buffer, uint8_t base);
