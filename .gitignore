@@ -1,3 +1,6 @@
+#vscode
+/.vscode/
+
 # STM32CubeIDE
 Debug/
 Release/

@@ -28,20 +28,18 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 
-#include "stm32g0xx_ll_adc.h"
-#include "stm32g0xx_ll_dma.h"
-#include "stm32g0xx_ll_lptim.h"
-#include "stm32g0xx_ll_lpuart.h"
-#include "stm32g0xx_ll_rcc.h"
-#include "stm32g0xx_ll_bus.h"
-#include "stm32g0xx_ll_system.h"
-#include "stm32g0xx_ll_exti.h"
-#include "stm32g0xx_ll_cortex.h"
-#include "stm32g0xx_ll_utils.h"
-#include "stm32g0xx_ll_pwr.h"
-#include "stm32g0xx_ll_tim.h"
-#include "stm32g0xx_ll_usart.h"
-#include "stm32g0xx_ll_gpio.h"
+#include "stm32f4xx_ll_adc.h"
+#include "stm32f4xx_ll_dma.h"
+#include "stm32f4xx_ll_rcc.h"
+#include "stm32f4xx_ll_bus.h"
+#include "stm32f4xx_ll_system.h"
+#include "stm32f4xx_ll_exti.h"
+#include "stm32f4xx_ll_cortex.h"
+#include "stm32f4xx_ll_utils.h"
+#include "stm32f4xx_ll_pwr.h"
+#include "stm32f4xx_ll_tim.h"
+#include "stm32f4xx_ll_usart.h"
+#include "stm32f4xx_ll_gpio.h"
 
 #if defined(USE_FULL_ASSERT)
 #include "stm32_assert.h"
@@ -75,25 +73,25 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define DATA_OUT_Pin LL_GPIO_PIN_2
-#define DATA_OUT_GPIO_Port GPIOA
-#define DATA_IN_Pin LL_GPIO_PIN_3
-#define DATA_IN_GPIO_Port GPIOA
-#define SOL1_OUT_Pin LL_GPIO_PIN_4
-#define SOL1_OUT_GPIO_Port GPIOA
-#define SOL2_OUT_Pin LL_GPIO_PIN_5
-#define SOL2_OUT_GPIO_Port GPIOA
-#define TEMP_SEN_IN_Pin LL_GPIO_PIN_6
-#define TEMP_SEN_IN_GPIO_Port GPIOA
-#define PRES_SEN_IN_Pin LL_GPIO_PIN_7
-#define PRES_SEN_IN_GPIO_Port GPIOA
-#define SEN_IN_OPT_Pin LL_GPIO_PIN_8
-#define SEN_IN_OPT_GPIO_Port GPIOA
-#define SEN_IN_Pin LL_GPIO_PIN_12
-#define SEN_IN_GPIO_Port GPIOA
-#define SEN_IN_EXTI_IRQn EXTI4_15_IRQn
-#define DBG_OUT_Pin LL_GPIO_PIN_6
-#define DBG_OUT_GPIO_Port GPIOB
+#define FLOW_IN_Pin LL_GPIO_PIN_3
+#define FLOW_IN_GPIO_Port GPIOA
+#define FLOW_IN_EXTI_IRQn EXTI3_IRQn
+#define SOL1_OUT_Pin LL_GPIO_PIN_5
+#define SOL1_OUT_GPIO_Port GPIOB
+#define SOL2_OUT_Pin LL_GPIO_PIN_6
+#define SOL2_OUT_GPIO_Port GPIOB
+#ifndef NVIC_PRIORITYGROUP_0
+#define NVIC_PRIORITYGROUP_0         ((uint32_t)0x00000007) /*!< 0 bit  for pre-emption priority,
+                                                                 4 bits for subpriority */
+#define NVIC_PRIORITYGROUP_1         ((uint32_t)0x00000006) /*!< 1 bit  for pre-emption priority,
+                                                                 3 bits for subpriority */
+#define NVIC_PRIORITYGROUP_2         ((uint32_t)0x00000005) /*!< 2 bits for pre-emption priority,
+                                                                 2 bits for subpriority */
+#define NVIC_PRIORITYGROUP_3         ((uint32_t)0x00000004) /*!< 3 bits for pre-emption priority,
+                                                                 1 bit  for subpriority */
+#define NVIC_PRIORITYGROUP_4         ((uint32_t)0x00000003) /*!< 4 bits for pre-emption priority,
+                                                                 0 bit  for subpriority */
+#endif
 
 /* USER CODE BEGIN Private defines */
 

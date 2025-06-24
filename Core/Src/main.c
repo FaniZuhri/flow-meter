@@ -20,9 +20,8 @@
 #include "main.h"
 #include "adc.h"
 #include "dma.h"
-#include "lptim.h"
-#include "usart.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -79,8 +78,11 @@ int main(void)
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
 
+  /* System interrupt init*/
+  NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+
   /* SysTick_IRQn interrupt configuration */
-  NVIC_SetPriority(SysTick_IRQn, 3);
+  NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),15, 0));
 
   /* USER CODE BEGIN Init */
 
@@ -97,20 +99,22 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_ADC1_Init();
-  MX_LPUART1_UART_Init();
-  MX_TIM1_Init();
-  MX_LPTIM1_Init();
+  MX_TIM10_Init();
+  MX_TIM11_Init();
   MX_USART1_UART_Init();
+  MX_USART6_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  lpuart_dma_receive();
+  fsm_init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
 	  fsm_run();
+    /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -122,36 +126,32 @@ int main(void)
   */
 void SystemClock_Config(void)
 {
-  /* HSI configuration and activation */
+  LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
+  while(LL_FLASH_GetLatency()!= LL_FLASH_LATENCY_0)
+  {
+  }
+  LL_PWR_SetRegulVoltageScaling(LL_PWR_REGU_VOLTAGE_SCALE2);
+  LL_RCC_HSI_SetCalibTrimming(16);
   LL_RCC_HSI_Enable();
+
+   /* Wait till HSI is ready */
   while(LL_RCC_HSI_IsReady() != 1)
   {
-  }
 
-  LL_PWR_EnableBkUpAccess();
-  /* LSE configuration and activation */
-  LL_RCC_LSE_SetDriveCapability(LL_RCC_LSEDRIVE_LOW);
-  LL_RCC_LSE_Enable();
-  while(LL_RCC_LSE_IsReady() != 1)
-  {
   }
-
-  /* Set AHB prescaler*/
   LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
-
-  /* Sysclk activation on the HSI */
+  LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
+  LL_RCC_SetAPB2Prescaler(LL_RCC_APB2_DIV_1);
   LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSI);
+
+   /* Wait till System clock is ready */
   while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSI)
   {
+
   }
-
-  /* Set APB1 prescaler*/
-  LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
-
   LL_Init1msTick(16000000);
-
-  /* Update CMSIS variable (which can be updated also through SystemCoreClockUpdate function) */
   LL_SetSystemCoreClock(16000000);
+  LL_RCC_SetTIMPrescaler(LL_RCC_TIM_PRESCALER_TWICE);
 }
 
 /* USER CODE BEGIN 4 */
