@@ -11,7 +11,8 @@
 #include "stm32g0xx_ll_usart.h"
 #include "usart.h"
 
-#define SCP_COMMAND_TABLE_SIZE	3U
+#define SCP_COMMAND_TABLE_SIZE	4U
+#define USE_ITOA				0U
 
 typedef int (*volatile scp_func_ptr) (uint8_t *);
 
@@ -51,22 +52,6 @@ int scp_exec_command(uint8_t *from_data_filtered, int from_data_action_command);
 
 extern scp_handle_t scp_handle;
 
-__STATIC_INLINE uint8_t *scp_handle_get_start_address(void) {
-	return scp_handle.start_address;
-}
-
-__STATIC_INLINE void scp_handle_set_start_address(uint8_t *addr) {
-	scp_handle.start_address = addr;
-}
-
-__STATIC_INLINE uint8_t *scp_handle_get_stop_address(void) {
-	return scp_handle.stop_address;
-}
-
-__STATIC_INLINE void scp_handle_set_stop_address(uint8_t *addr) {
-	scp_handle.stop_address = addr;
-}
-
 __STATIC_INLINE uint8_t scp_handle_is_busy(void) {
 	return scp_handle.is_busy;
 }
@@ -75,17 +60,10 @@ __STATIC_INLINE void scp_handle_set_busy(uint8_t val) {
 	scp_handle.is_busy = val;
 }
 
-__STATIC_INLINE uint8_t scp_handle_is_rcv_done(void) {
-	return scp_handle.rcv_done;
-}
-
-__STATIC_INLINE void scp_handle_set_rcv_done(uint8_t val) {
-	scp_handle.rcv_done = val;
-}
-
-void ack_response_fn(uint8_t command, uint8_t *data, uint8_t data_size);
-void err_response_fn(uint8_t command);
-void nak_response_fn(uint8_t command);
+#if defined(USE_ITOA) && (USE_ITOA)
 uint8_t *itoa(uint16_t value, uint8_t *buffer, uint8_t base);
+#endif
+
+int scp_user_get_all_data(uint8_t *rx_cmd_buf);
 
 #endif /* INC_UPH_SCP_H_ */

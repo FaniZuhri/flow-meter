@@ -21,7 +21,7 @@
 #include "adc.h"
 
 /* USER CODE BEGIN 0 */
-
+volatile uint16_t sen_buf[SEN_ID_SIZE];
 /* USER CODE END 0 */
 
 /* ADC1 init function */
@@ -120,8 +120,8 @@ void MX_ADC1_Init(void)
   ADC_REG_InitStruct.SequencerLength = LL_ADC_REG_SEQ_SCAN_DISABLE;
   ADC_REG_InitStruct.SequencerDiscont = LL_ADC_REG_SEQ_DISCONT_DISABLE;
   ADC_REG_InitStruct.ContinuousMode = LL_ADC_REG_CONV_SINGLE;
-  ADC_REG_InitStruct.DMATransfer = LL_ADC_REG_DMA_TRANSFER_LIMITED;
-  ADC_REG_InitStruct.Overrun = LL_ADC_REG_OVR_DATA_PRESERVED;
+  ADC_REG_InitStruct.DMATransfer = LL_ADC_REG_DMA_TRANSFER_UNLIMITED;
+  ADC_REG_InitStruct.Overrun = LL_ADC_REG_OVR_DATA_OVERWRITTEN;
   LL_ADC_REG_Init(ADC1, &ADC_REG_InitStruct);
   LL_ADC_SetOverSamplingScope(ADC1, LL_ADC_OVS_DISABLE);
   LL_ADC_SetTriggerFrequencyMode(ADC1, LL_ADC_CLOCK_FREQ_MODE_HIGH);
@@ -170,11 +170,27 @@ void MX_ADC1_Init(void)
    LL_ADC_ClearFlag_CCRDY(ADC1);
   LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_7, LL_ADC_SAMPLINGTIME_COMMON_1);
   /* USER CODE BEGIN ADC1_Init 2 */
-
+  adc_dma_start();
   /* USER CODE END ADC1_Init 2 */
 
 }
 
 /* USER CODE BEGIN 1 */
+void adc_dma_start(void) {
+	LL_DMA_SetPeriphAddress(
+			DMA1,
+			LL_DMA_CHANNEL_3,
+			LL_ADC_DMA_GetRegAddr(ADC1, LL_ADC_DMA_REG_REGULAR_DATA)
+	);
+	LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_3, (uint32_t) sen_buf);
+	LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_3);
+}
 
+void adc_dma_stop(void) {
+	LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_3);
+}
+
+uint8_t adc_is_dma_started(void) {
+	return LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_3);
+}
 /* USER CODE END 1 */

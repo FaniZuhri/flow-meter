@@ -29,7 +29,11 @@ extern "C" {
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
-
+typedef enum sensor_id_e {
+	SEN_ID_PRESSURE,
+	SEN_ID_TEMP,
+	SEN_ID_SIZE,
+} sensor_id_t;
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN Private defines */
@@ -39,7 +43,11 @@ extern "C" {
 void MX_ADC1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
+extern volatile uint16_t sen_buf[SEN_ID_SIZE];
 
+void adc_dma_start(void);
+void adc_dma_stop(void);
+uint8_t adc_is_dma_started(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

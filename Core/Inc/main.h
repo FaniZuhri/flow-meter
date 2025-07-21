@@ -39,7 +39,6 @@ extern "C" {
 #include "stm32g0xx_ll_cortex.h"
 #include "stm32g0xx_ll_utils.h"
 #include "stm32g0xx_ll_pwr.h"
-#include "stm32g0xx_ll_tim.h"
 #include "stm32g0xx_ll_usart.h"
 #include "stm32g0xx_ll_gpio.h"
 
@@ -87,8 +86,6 @@ void Error_Handler(void);
 #define TEMP_SEN_IN_GPIO_Port GPIOA
 #define PRES_SEN_IN_Pin LL_GPIO_PIN_7
 #define PRES_SEN_IN_GPIO_Port GPIOA
-#define SEN_IN_OPT_Pin LL_GPIO_PIN_8
-#define SEN_IN_OPT_GPIO_Port GPIOA
 #define SEN_IN_Pin LL_GPIO_PIN_12
 #define SEN_IN_GPIO_Port GPIOA
 #define SEN_IN_EXTI_IRQn EXTI4_15_IRQn

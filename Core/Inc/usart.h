@@ -29,6 +29,7 @@ extern "C" {
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
+#include <string.h>
 #define LPUART_RX_DATA_SIZE		256U
 #define LPUART_TX_DATA_SIZE		128U
 #define UART_DBG_TX_DATA_SIZE	128U
@@ -42,7 +43,7 @@ typedef enum {
 /* USER CODE BEGIN Private defines */
 extern uint8_t uart_tx_buf[UART_DBG_TX_DATA_SIZE], uart_start_byte_idx;
 extern uint8_t lpuart_rx_buf[LPUART_RX_DATA_SIZE], lpuart_tx_buf[LPUART_TX_DATA_SIZE];
-extern volatile uart_scp_dma_status_t lpuart_scp_tx_status;
+extern volatile uart_scp_dma_status_t lpuart_scp_tx_status, uart_tx_status;
 /* USER CODE END Private defines */
 
 void MX_LPUART1_UART_Init(void);
@@ -57,6 +58,7 @@ __STATIC_INLINE void lpuart_set_rx_buf(uint8_t idx, uint8_t data) {
 	lpuart_rx_buf[idx] = data;
 }
 
+void uart_debug_print(uint8_t *buf, uint32_t size);
 void lpuart_dma_transmit(uint8_t *tx_buf, uint8_t tx_size);
 void lpuart_dma_receive(void);
 

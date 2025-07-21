@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usart.h"
+
 #include "uph_flow_sensor.h"
 #include "uph_fsm.h"
 /* USER CODE END Includes */
@@ -155,7 +156,6 @@ void EXTI4_15_IRQHandler(void)
   {
     LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_12);
     /* USER CODE BEGIN LL_EXTI_LINE_12_RISING */
-//	TODO: increment counter
     flow_inc_pulse_count();
     /* USER CODE END LL_EXTI_LINE_12_RISING */
   }
@@ -173,6 +173,7 @@ void DMA1_Channel1_IRQHandler(void)
 	if (LL_DMA_IsActiveFlag_TE1(DMA1)) {
 		LL_DMA_ClearFlag_TE1(DMA1);
 	}
+
 	if(LL_DMA_IsActiveFlag_TC1(DMA1)) {
 		LL_DMA_ClearFlag_TC1(DMA1);
 		lpuart_scp_tx_status = UART_SCP_DMA_TX_COMPLETE;
@@ -192,6 +193,15 @@ void DMA1_Channel2_3_IRQHandler(void)
 	if (LL_DMA_IsActiveFlag_TE2(DMA1)) {
 		LL_DMA_ClearFlag_TE2(DMA1);
 	}
+
+	if (LL_DMA_IsActiveFlag_TE3(DMA1)) {
+		LL_DMA_ClearFlag_TE3(DMA1);
+	}
+
+	if (LL_DMA_IsActiveFlag_TC3(DMA1)) {
+		LL_DMA_ClearFlag_TC3(DMA1);
+		fsm_set_state(FSM_STATE_SENS_PRES_TEMP_DONE);
+	}
   /* USER CODE END DMA1_Channel2_3_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel2_3_IRQn 1 */
 
@@ -207,10 +217,11 @@ void DMA1_Ch4_5_DMAMUX1_OVR_IRQHandler(void)
 	if (LL_DMA_IsActiveFlag_TE4(DMA1)) {
 		LL_DMA_ClearFlag_TE4(DMA1);
 	}
-//	if(LL_DMA_IsActiveFlag_TC4(DMA1)) {
-//		LL_DMA_ClearFlag_TC4(DMA1);
-//		usart_scp_tx_status = UART_SCP_DMA_TX_COMPLETE;
-//	}
+
+	if(LL_DMA_IsActiveFlag_TC4(DMA1)) {
+		LL_DMA_ClearFlag_TC4(DMA1);
+		uart_tx_status = UART_SCP_DMA_TX_COMPLETE;
+	}
   /* USER CODE END DMA1_Ch4_5_DMAMUX1_OVR_IRQn 0 */
   /* USER CODE BEGIN DMA1_Ch4_5_DMAMUX1_OVR_IRQn 1 */
 
@@ -231,58 +242,35 @@ void ADC1_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles TIM1 break, update, trigger and commutation interrupts.
-  */
-void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
-{
-  /* USER CODE BEGIN TIM1_BRK_UP_TRG_COM_IRQn 0 */
-	if (LL_TIM_IsActiveFlag_UPDATE(TIM1)) {
-		LL_TIM_ClearFlag_UPDATE(TIM1);
-		flow_set_pulse_count(0); // Reset pulse count tiap 1 detik
-	}
-  /* USER CODE END TIM1_BRK_UP_TRG_COM_IRQn 0 */
-  /* USER CODE BEGIN TIM1_BRK_UP_TRG_COM_IRQn 1 */
-
-  /* USER CODE END TIM1_BRK_UP_TRG_COM_IRQn 1 */
-}
-
-/**
-  * @brief This function handles TIM1 capture compare interrupt.
-  */
-void TIM1_CC_IRQHandler(void)
-{
-  /* USER CODE BEGIN TIM1_CC_IRQn 0 */
-	if (LL_TIM_IsActiveFlag_CC1(TIM1)) {
-		LL_TIM_ClearFlag_CC1(TIM1);
-		uint32_t captured_value = LL_TIM_IC_GetCaptureCH1(TIM1);
-
-		if (flow_get_last_captured()) {
-			flow_set_pulse_frequency(
-					SystemCoreClock / (captured_value - flow_get_last_captured())
-			);
-			flow_set_flow_rate(flow_get_pulse_frequency() / FLOW_FACTOR);
-			flow_inc_total_volume();
-		}
-		flow_set_last_captured(captured_value);
-		flow_inc_pulse_count();
-	}
-  /* USER CODE END TIM1_CC_IRQn 0 */
-  /* USER CODE BEGIN TIM1_CC_IRQn 1 */
-
-  /* USER CODE END TIM1_CC_IRQn 1 */
-}
-
-/**
   * @brief This function handles LPTIM1 interrupt through EXTI line 29.
   */
 void LPTIM1_IRQHandler(void)
 {
   /* USER CODE BEGIN LPTIM1_IRQn 0 */
-
+	if (LL_LPTIM_IsActiveFlag_CMPM(LPTIM1)) {
+		LL_LPTIM_ClearFlag_CMPM(LPTIM1);
+		fsm_set_state(FSM_STATE_PERIODIC_SENS_REACHED);
+	}
   /* USER CODE END LPTIM1_IRQn 0 */
   /* USER CODE BEGIN LPTIM1_IRQn 1 */
 
   /* USER CODE END LPTIM1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles LPTIM2 interrupt through EXTI line 30.
+  */
+void LPTIM2_IRQHandler(void)
+{
+  /* USER CODE BEGIN LPTIM2_IRQn 0 */
+	if (LL_LPTIM_IsActiveFlag_CMPM(LPTIM2)) {
+		LL_LPTIM_ClearFlag_CMPM(LPTIM2);
+		fsm_set_state(FSM_STATE_PERIODIC_PRES_TEMP_REACHED);
+	}
+  /* USER CODE END LPTIM2_IRQn 0 */
+  /* USER CODE BEGIN LPTIM2_IRQn 1 */
+
+  /* USER CODE END LPTIM2_IRQn 1 */
 }
 
 /**
@@ -291,8 +279,6 @@ void LPTIM1_IRQHandler(void)
 void LPUART1_IRQHandler(void)
 {
   /* USER CODE BEGIN LPUART1_IRQn 0 */
-//	if (LL_LPUART_IsActiveFlag_RXNE_RXFNE(LPUART1)) {
-//	}
 	if (LL_LPUART_IsActiveFlag_FE(LPUART1)) {
 		LL_LPUART_ClearFlag_FE(LPUART1);
 	}
@@ -305,7 +291,6 @@ void LPUART1_IRQHandler(void)
 		LL_LPUART_ClearFlag_IDLE(LPUART1);
 		if(LL_LPUART_ReceiveData8(LPUART1)) {
 //			NOTE: some bytes received in Rx Data Register
-//			TODO: set flag rx done
 			fsm_set_state(FSM_STATE_LPUART_RCV_DONE);
 		}
 	}

@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "uph_flow_sensor.h": "c",
+        "lptim.h": "c",
+        "uph_fsm.h": "c",
+        "uph_user_data.h": "c",
+        "adc.h": "c"
+    }
+}

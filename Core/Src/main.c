@@ -22,7 +22,6 @@
 #include "dma.h"
 #include "lptim.h"
 #include "usart.h"
-#include "tim.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -98,19 +97,21 @@ int main(void)
   MX_DMA_Init();
   MX_ADC1_Init();
   MX_LPUART1_UART_Init();
-  MX_TIM1_Init();
   MX_LPTIM1_Init();
   MX_USART1_UART_Init();
+  MX_LPTIM2_Init();
   /* USER CODE BEGIN 2 */
   lpuart_dma_receive();
+  fsm_set_state(FSM_STATE_IDLE);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	fsm_run();
     /* USER CODE END WHILE */
-	  fsm_run();
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -130,7 +131,7 @@ void SystemClock_Config(void)
 
   LL_PWR_EnableBkUpAccess();
   /* LSE configuration and activation */
-  LL_RCC_LSE_SetDriveCapability(LL_RCC_LSEDRIVE_LOW);
+  LL_RCC_LSE_EnableBypass();
   LL_RCC_LSE_Enable();
   while(LL_RCC_LSE_IsReady() != 1)
   {

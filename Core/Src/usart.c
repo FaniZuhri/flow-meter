@@ -25,7 +25,7 @@
 
 uint8_t uart_tx_buf[UART_DBG_TX_DATA_SIZE], uart_start_byte_idx = 0;
 uint8_t lpuart_rx_buf[LPUART_RX_DATA_SIZE], lpuart_tx_buf[LPUART_TX_DATA_SIZE];
-volatile uart_scp_dma_status_t lpuart_scp_tx_status;
+volatile uart_scp_dma_status_t lpuart_scp_tx_status, uart_tx_status;
 /* USER CODE END 0 */
 
 /* LPUART1 init function */
@@ -282,5 +282,19 @@ void lpuart_dma_receive(void) {
 	LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_2, LPUART_RX_DATA_SIZE);
 	LL_LPUART_EnableDMAReq_RX(LPUART1);
 	LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_2);
+}
+
+void uart_debug_print(uint8_t *buf, uint32_t size) {
+	LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_4);
+
+	memset(uart_tx_buf, 0x0U, UART_DBG_TX_DATA_SIZE);
+
+	uart_tx_status = UART_SCP_DMA_TX_UNCOMPLETE;
+	memcpy(uart_tx_buf, buf, size);
+
+	LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_4, size);
+	LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_4);
+
+	while(uart_tx_status == UART_SCP_DMA_TX_UNCOMPLETE);
 }
 /* USER CODE END 1 */
