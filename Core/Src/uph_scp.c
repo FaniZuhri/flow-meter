@@ -30,7 +30,7 @@ const scp_command_table_t scp_cmd_tbl[SCP_COMMAND_TABLE_SIZE] = {
 	{'Z',				scp_test_getter,				scp_test_setter},
 	{'S',				scp_sensor_get_sensing_flag,	scp_sensor_set_sensing},
 	{'D',				scp_user_get_all_data,			NULL},
-	{'B',				scp_user_set_solenoid,			scp_user_get_solenoid},
+	{'B',				scp_user_get_solenoid,			scp_user_set_solenoid},
 };
 
 scp_handle_t scp_handle;
@@ -50,7 +50,9 @@ static uint8_t *itoa_reverse(uint8_t *buffer, int i, int j);
 #endif
 
 int scp_test_getter(uint8_t *rx_cmd_buf) {
-	return 0;
+	uint8_t test_val = 1;
+	send_response_fn(*rx_cmd_buf, SCP_ACK_RESPONSE, &test_val, 1);
+	return SCP_DATA_RESPPONSE;
 }
 
 int scp_test_setter(uint8_t *rx_cmd_buf) {
@@ -59,18 +61,21 @@ int scp_test_setter(uint8_t *rx_cmd_buf) {
 
 int scp_user_set_solenoid(uint8_t *rx_cmd_buf) {
 	uint8_t sol1_state = (*rx_cmd_buf) - 48;
-	uint8_t sol2_state = (*(rx_cmd_buf + 1)) - 48;
+	uint8_t sol2_state = (*(rx_cmd_buf + 2)) - 48;
 
-	UserData_SetSolenoidState(sol1_state, sol2_state);
+	UserData_SetSolenoidState(SOLENOID_1, sol1_state);
+	UserData_SetSolenoidState(SOLENOID_2, sol2_state);
 	return 0;
 }
 
 int scp_user_get_solenoid(uint8_t *rx_cmd_buf) {
-	uint8_t sol_state[2];
-	sol_state[SOLENOID_1] = UserData_GetSolenoidState(SOLENOID_1);
-	sol_state[SOLENOID_2] = UserData_GetSolenoidState(SOLENOID_1);
+	uint8_t send_buf[3];
 
-	send_response_fn(*rx_cmd_buf, SCP_ACK_RESPONSE, sol_state, 2);
+	send_buf[0] = UserData_GetSolenoidState(SOLENOID_1);
+	send_buf[1]	= ',';
+	send_buf[2] = UserData_GetSolenoidState(SOLENOID_1);
+
+	send_response_fn(*rx_cmd_buf, SCP_ACK_RESPONSE, send_buf, 3);
 	return SCP_DATA_RESPPONSE;
 }
 
@@ -89,12 +94,17 @@ int scp_sensor_set_sensing(uint8_t *rx_cmd_buf) {
 		FlowSensor_Init(&h_flow_sensor, 500);
 		TIM_Handler_Start(&h_tim11, h_flow_sensor.calculation_interval_ms);
 		TIM_Handler_Start(&h_tim10, 200);
+
+		UserData_SetSolenoidState(SOLENOID_1, val);
+		UserData_SetSolenoidState(SOLENOID_2, val);
 	}
 	else {
+		UserData_SetSolenoidState(SOLENOID_1, val);
+		UserData_SetSolenoidState(SOLENOID_2, val);
+
 		TIM_Handler_Stop(&h_tim11);
 		TIM_Handler_Stop(&h_tim10);
 	}
-
 	return 0;
 }
 

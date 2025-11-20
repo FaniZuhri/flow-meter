@@ -36,11 +36,21 @@ void fsm_run(void) {
 	if (fsm_is_active_state(FSM_STATE_USER_COMM_RCV_DONE)) {
 		scp_handle_set_busy(1);
 
-		memcpy(
-				(char *) scp_handle.scp_buf,
-				(char *) h_usart1.rx_buffer,
-				h_usart1.rx_data_len
-		);
+		if ((int32_t) h_usart1.last_rx_dma_pos - (int32_t) h_usart1.rx_data_len < 0) {
+			uint16_t rx_prev_idx = (int32_t) h_usart1.last_rx_dma_pos - (int32_t) h_usart1.rx_data_len + h_usart1.rx_buffer_size;
+			memcpy(
+					(char *) scp_handle.scp_buf,
+					(char *) h_usart1.rx_buffer + rx_prev_idx,
+					h_usart1.rx_data_len - h_usart1.last_rx_dma_pos
+			);
+		}
+		else {
+			memcpy(
+					(char *) scp_handle.scp_buf,
+					(char *) h_usart1.rx_buffer + (h_usart1.last_rx_dma_pos - h_usart1.rx_data_len),
+					h_usart1.rx_data_len
+			);
+		}
 
 		scp_cmd_process();
 
@@ -58,21 +68,11 @@ void fsm_run(void) {
 
 	if (fsm_is_active_state(FSM_STATE_PERIODIC_SENS_REACHED)) {
 
-//		UserData_Calculate_Pres_Bar(adc_dma_buffer[0]);
-//		UserData_Calculate_Temp_Celsius(adc_dma_buffer[1]);
-//		sprintf(
-//				(char *) h_usart1.tx_buffer,
-//				"{D:%ld,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d}\r\n",
-//				user_data.flow_sensor->pulse_count,
-//				user_data.flow_sensor->frequency_hz,
-//				user_data.flow_sensor->flow_rate_lpm,
-//				user_data.flow_sensor->total_volume_liters,
-//				user_data.pres_val_bar,
-//				user_data.temp_val_celcius,
-//				user_data.solenoid_states[0],
-//				user_data.solenoid_states[1]
-//		);
-//		usart_dma_transmit(&h_usart1, h_usart1.tx_buffer, strlen((char *) h_usart1.tx_buffer));
+//		if (!h_flow_sensor.is_running) {
+//			TIM_Handler_Stop(&h_tim11);
+//			TIM_Handler_Stop(&h_tim10);
+//		}
+
 		scp_user_get_all_data(NULL);
 
 		fsm_reset_state(FSM_STATE_PERIODIC_SENS_REACHED);

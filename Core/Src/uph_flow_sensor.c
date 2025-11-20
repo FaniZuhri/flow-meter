@@ -8,7 +8,7 @@
 #include "uph_flow_sensor.h"
 #include "tim_handler.h"
 
-#define FLOW_SENSOR_CONSTANT 11.0f
+#define FLOW_SENSOR_CONSTANT 6.6f
 
 FlowSensor_Handler_t h_flow_sensor;
 

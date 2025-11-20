@@ -8,17 +8,19 @@
 #include "uph_user_data.h"
 #include <math.h>
 
-#define USER_TEMP_SENS_RES_DIVIDER_OHM		50000.0f
-#define USER_PRES_SENS_RES_DIVIDER_V_OHM	150.0f
-#define USER_PRES_SENS_RES_DIVIDER_IN_OHM	326.0f
-
 #define USER_MAX_SENS_RESOLUTION			4095.0f
 
-#define VOLTAGE_IN							3.3f
+#define USER_TEMP_VOLTAGE_IN				3.3f
 #define THERMISTOR_NOMINAL					50000.0f
 #define B_COEFFICIENT						3950.0f
 #define TEMP_NOMINAL						25.0f
-const float VOLTAGE_DIVIDER_FACTOR = ((USER_PRES_SENS_RES_DIVIDER_IN_OHM + USER_PRES_SENS_RES_DIVIDER_V_OHM) / USER_PRES_SENS_RES_DIVIDER_IN_OHM);
+#define USER_TEMP_SENS_RES_DIVIDER_OHM		42000.0f
+
+#define USER_PRES_VOLTAGE_IN				5.1f
+#define USER_PRES_SENS_RES_DIVIDER_IN_OHM	330.0f
+#define USER_PRES_SENS_RES_DIVIDER_V_OHM	150.0f
+
+const float PRES_VOLTAGE_DIVIDER_FACTOR = ((USER_PRES_SENS_RES_DIVIDER_IN_OHM + USER_PRES_SENS_RES_DIVIDER_V_OHM) / USER_PRES_SENS_RES_DIVIDER_IN_OHM);
 
 UserData_t user_data;
 
@@ -52,9 +54,9 @@ void UserData_SetSolenoidState(Solenoid_ID_t solenoid_id, bool new_state) {
     }
 
     if (new_state == true) {
-        LL_GPIO_SetOutputPin(port, pin);
-    } else {
         LL_GPIO_ResetOutputPin(port, pin);
+    } else {
+        LL_GPIO_SetOutputPin(port, pin);
     }
 }
 
@@ -66,7 +68,9 @@ bool UserData_GetSolenoidState(Solenoid_ID_t solenoid_id) {
 }
 
 void UserData_Calculate_Temp_Celsius(uint16_t adc_val) {
-	float resistance = USER_TEMP_SENS_RES_DIVIDER_OHM * (USER_MAX_SENS_RESOLUTION / (float)adc_val - 1.0);
+	float v_temp_res = ((float) adc_val / USER_MAX_SENS_RESOLUTION) * USER_TEMP_VOLTAGE_IN;
+	float resistance = USER_TEMP_SENS_RES_DIVIDER_OHM * ((USER_TEMP_VOLTAGE_IN / v_temp_res) - 1);
+//	float resistance = USER_TEMP_SENS_RES_DIVIDER_OHM * (USER_MAX_SENS_RESOLUTION / (float)adc_val - 1.0);
 	float steinhart;
 
 	steinhart = resistance / THERMISTOR_NOMINAL;     // (R/R0)
@@ -78,8 +82,12 @@ void UserData_Calculate_Temp_Celsius(uint16_t adc_val) {
 }
 
 void UserData_Calculate_Pres_Bar(uint16_t adc_val) {
-	float voltage_at_pin = (adc_val / USER_MAX_SENS_RESOLUTION) * VOLTAGE_IN;
-	float sensor_voltage = voltage_at_pin * VOLTAGE_DIVIDER_FACTOR;
+	float voltage_at_pin = (adc_val / USER_MAX_SENS_RESOLUTION) * USER_PRES_VOLTAGE_IN;
+	float pres_volt_divider_factor = ((USER_PRES_SENS_RES_DIVIDER_IN_OHM + USER_PRES_SENS_RES_DIVIDER_V_OHM) / USER_PRES_SENS_RES_DIVIDER_IN_OHM);
+	float sensor_voltage = voltage_at_pin * pres_volt_divider_factor;
 	float pressure_mpa = (sensor_voltage - 0.5) * (1.6 / 4.0);
+	if (pressure_mpa < 0) {
+		pressure_mpa = 0;
+	}
 	user_data.pres_val_bar = pressure_mpa * 10;
 }

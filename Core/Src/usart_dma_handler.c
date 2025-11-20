@@ -26,20 +26,20 @@ void usart_dma_start(USART_DMA_Handler_t* huart) {
 
     // Activates only necessary interrupts
     if (huart->dma_rx_stream != 0) {
-        LL_USART_EnableIT_IDLE(huart->usart_instance);
+		LL_USART_EnableIT_IDLE(huart->usart_instance);
 
-        LL_DMA_SetPeriphAddress(huart->dma_instance, huart->dma_rx_stream, LL_USART_DMA_GetRegAddr(huart->usart_instance));
-        LL_DMA_SetMemoryAddress(huart->dma_instance, huart->dma_rx_stream, (uint32_t) huart->rx_buffer);
-        LL_DMA_SetDataLength(huart->dma_instance, huart->dma_rx_stream, huart->rx_buffer_size);
-        LL_USART_EnableDMAReq_RX(huart->usart_instance);
+		LL_DMA_SetPeriphAddress(huart->dma_instance, huart->dma_rx_stream, LL_USART_DMA_GetRegAddr(huart->usart_instance));
+		LL_DMA_SetMemoryAddress(huart->dma_instance, huart->dma_rx_stream, (uint32_t) huart->rx_buffer);
+		LL_DMA_SetDataLength(huart->dma_instance, huart->dma_rx_stream, huart->rx_buffer_size);
+		LL_USART_EnableDMAReq_RX(huart->usart_instance);
 
-        LL_DMA_EnableStream(huart->dma_instance, huart->dma_rx_stream);
+		LL_DMA_EnableStream(huart->dma_instance, huart->dma_rx_stream);
     }
 
     if (huart->dma_tx_stream != 0) {
-    	LL_DMA_SetPeriphAddress(huart->dma_instance, huart->dma_tx_stream, LL_USART_DMA_GetRegAddr(huart->usart_instance));
-        LL_DMA_EnableIT_TC(huart->dma_instance, huart->dma_tx_stream);
-        LL_DMA_EnableIT_TE(huart->dma_instance, huart->dma_tx_stream);
+		LL_DMA_SetPeriphAddress(huart->dma_instance, huart->dma_tx_stream, LL_USART_DMA_GetRegAddr(huart->usart_instance));
+		LL_DMA_EnableIT_TC(huart->dma_instance, huart->dma_tx_stream);
+		LL_DMA_EnableIT_TE(huart->dma_instance, huart->dma_tx_stream);
     }
 }
 
@@ -55,7 +55,6 @@ ErrorStatus usart_dma_transmit(USART_DMA_Handler_t* huart, const uint8_t* data, 
     LL_DMA_DisableStream(huart->dma_instance, huart->dma_tx_stream);
 
     LL_DMA_SetDataLength(huart->dma_instance, huart->dma_tx_stream, len_to_copy);
-//    LL_DMA_SetPeriphAddress(huart->dma_instance, huart->dma_tx_stream, LL_USART_DMA_GetRegAddr(huart->usart_instance));
     LL_DMA_SetMemoryAddress(huart->dma_instance, huart->dma_tx_stream, (uint32_t) huart->tx_buffer);
     LL_USART_EnableDMAReq_TX(huart->usart_instance);
 

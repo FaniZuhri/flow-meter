@@ -34,7 +34,7 @@ void Periodic_Calculation_Callback(void);
 
 __STATIC_INLINE void FlowSensor_Set_Started(FlowSensor_Handler_t *hflow, uint8_t val) {
 	if (hflow) {
-		hflow->is_running = 1;
+		hflow->is_running = val;
 	}
 }
 

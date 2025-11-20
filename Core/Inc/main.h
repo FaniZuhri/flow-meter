@@ -76,9 +76,9 @@ void Error_Handler(void);
 #define FLOW_IN_Pin LL_GPIO_PIN_3
 #define FLOW_IN_GPIO_Port GPIOA
 #define FLOW_IN_EXTI_IRQn EXTI3_IRQn
-#define SOL1_OUT_Pin LL_GPIO_PIN_5
-#define SOL1_OUT_GPIO_Port GPIOB
-#define SOL2_OUT_Pin LL_GPIO_PIN_6
+#define SOL1_OUT_Pin LL_GPIO_PIN_7
+#define SOL1_OUT_GPIO_Port GPIOA
+#define SOL2_OUT_Pin LL_GPIO_PIN_0
 #define SOL2_OUT_GPIO_Port GPIOB
 #ifndef NVIC_PRIORITYGROUP_0
 #define NVIC_PRIORITYGROUP_0         ((uint32_t)0x00000007) /*!< 0 bit  for pre-emption priority,
