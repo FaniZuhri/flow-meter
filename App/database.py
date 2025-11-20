@@ -4,8 +4,7 @@ from datetime import datetime
 
 class DatabaseManager:
     """
-    Mengelola koneksi dan operasi database SQLite.
-    Menerapkan pola Singleton sederhana melalui pemanggilan instance.
+    MODEL: Mengelola struktur data dan interaksi langsung dengan SQLite.
     """
 
     def __init__(self, db_name="water_meter_test.db"):
@@ -13,11 +12,12 @@ class DatabaseManager:
         self._init_db()
 
     def _init_db(self):
-        """Membuat tabel yang diperlukan jika belum ada."""
+        """Inisialisasi tabel jika belum ada."""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
-        # 1. Tabel Log Pengujian (History Test)
+        # 1. Tabel Log Pengujian (Test Logs)
+        # UPDATE: Menambahkan kolom 'error_rate'
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS test_logs (
@@ -26,7 +26,9 @@ class DatabaseManager:
                 volume_target REAL,
                 initial_meter REAL,
                 final_meter REAL,
+                measured_volume REAL,
                 actual_volume REAL,
+                error_rate REAL,
                 avg_flow_rate REAL,
                 avg_pressure REAL,
                 avg_temp REAL,
@@ -35,8 +37,7 @@ class DatabaseManager:
         """
         )
 
-        # 2. Tabel Titik Kalibrasi (Calibration Points)
-        # sensor_type: 'TEMP', 'PRESS', 'FLOW'
+        # 2. Tabel Titik Kalibrasi
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS calibration_points (
@@ -54,30 +55,27 @@ class DatabaseManager:
         conn.close()
 
     def insert_test_log(self, data: dict):
-        """
-        Menyimpan hasil akhir pengujian ke database.
-
-        Args:
-            data (dict): Dictionary berisi keys: volume_target, initial_meter,
-                         final_meter, actual_volume, avg_flow_rate,
-                         avg_pressure, avg_temp, status.
-        """
+        """Menyimpan hasil pengujian."""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         try:
             cursor.execute(
                 """
                 INSERT INTO test_logs (
-                    timestamp, volume_target, initial_meter, final_meter, 
-                    actual_volume, avg_flow_rate, avg_pressure, avg_temp, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    timestamp, volume_target, initial_meter, final_meter, measured_volume,
+                    actual_volume, error_rate, avg_flow_rate, avg_pressure, avg_temp, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     data.get("volume_target", 0),
                     data.get("initial_meter", 0),
                     data.get("final_meter", 0),
-                    data.get("actual_volume", 0),
+                    data.get(
+                        "measured_volume", 0
+                    ),  # Volume hasil bacaan meter (Final - Initial)
+                    data.get("actual_volume", 0),  # Volume dari Sensor MCU
+                    data.get("error_rate", 0),  # Persentase Error
                     data.get("avg_flow_rate", 0),
                     data.get("avg_pressure", 0),
                     data.get("avg_temp", 0),
@@ -85,27 +83,17 @@ class DatabaseManager:
                 ),
             )
             conn.commit()
-            print("[DB] Test log saved successfully.")
+            print("[DB] Test result saved with Error Rate.")
         except Exception as e:
-            print(f"[DB] Error saving test log: {e}")
+            print(f"[DB Error] Insert Log: {e}")
         finally:
             conn.close()
 
     def add_calibration_point(self, sensor_type: str, sens_val: float, ref_val: float):
-        """
-        Menghitung Gain Factor dan menyimpannya.
-        Rumus: Gain Factor = Reference / Sensor Value
-
-        Args:
-            sensor_type (str): 'TEMP', 'PRESS', atau 'FLOW'
-            sens_val (float): Nilai bacaan sensor (sebelum kalibrasi)
-            ref_val (float): Nilai referensi aktual (termometer/manometer standar)
-        """
         if sens_val == 0:
-            factor = 0.0
-            print("[DB] Warning: Sensor value is 0, gain set to 0.")
+            gain = 0.0
         else:
-            factor = ref_val / sens_val
+            gain = ref_val / sens_val
 
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -119,47 +107,40 @@ class DatabaseManager:
                     sensor_type,
                     sens_val,
                     ref_val,
-                    factor,
+                    gain,
                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 ),
             )
             conn.commit()
-            print(f"[DB] Calibration point added for {sensor_type}. Gain: {factor:.4f}")
         except Exception as e:
-            print(f"[DB] Error adding calibration: {e}")
+            print(f"[DB Error] Add Calibration: {e}")
         finally:
             conn.close()
 
     def get_calibration_points(self, sensor_type: str) -> list:
-        """
-        Mengambil list history kalibrasi berdasarkan tipe sensor.
-        Digunakan untuk mengisi Dropdown (ComboBox).
-        """
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        points = []
+        data = []
         try:
             cursor.execute(
                 """
-                SELECT id, sensor_value, reference_value, gain_factor 
+                SELECT id, sensor_value, reference_value, gain_factor, timestamp 
                 FROM calibration_points 
                 WHERE sensor_type = ? 
                 ORDER BY id DESC
             """,
                 (sensor_type,),
             )
-            points = cursor.fetchall()
+            data = cursor.fetchall()
         finally:
             conn.close()
-        return points
+        return data
 
     def delete_calibration_point(self, point_id: int):
-        """Menghapus satu titik kalibrasi berdasarkan ID."""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         try:
             cursor.execute("DELETE FROM calibration_points WHERE id = ?", (point_id,))
             conn.commit()
-            print(f"[DB] Calibration point {point_id} deleted.")
         finally:
             conn.close()
