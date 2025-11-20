@@ -45,6 +45,9 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         # Default Page
         self.menuStackedWidget.setCurrentIndex(0)
 
+        # Kondisi Awal Tombol Finish: Disable
+        self.btn_test_finish.setEnabled(False)
+
     # --- UI Connections ---
     def init_ui_connections(self):
         # Header
@@ -56,8 +59,9 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.btn_nav_press_cal.clicked.connect(lambda: self.navigate_to_page(2))
         self.btn_nav_flow_cal.clicked.connect(lambda: self.navigate_to_page(3))
 
-        # Test Page
-        self.btn_test_start.clicked.connect(self.start_test)
+        # --- TEST PAGE LOGIC ---
+        # Hubungkan ke handler toggle (bukan langsung start_test)
+        self.btn_test_start.clicked.connect(self.handle_test_toggle)
         self.btn_test_finish.clicked.connect(self.finish_test)
         self.btn_test_reset.clicked.connect(self.reset_test_ui)
 
@@ -117,12 +121,16 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         if not connected:
             self.btn_connect.setText("Connect")
             self.poll_timer.stop()
+
+            # Reset State jika putus koneksi
             self.is_testing = False
+            self.btn_test_start.setText("Start")
             self.btn_test_start.setEnabled(True)
-            self.btn_test_finish.setEnabled(True)
+            self.btn_test_finish.setEnabled(False)
 
     def request_sensor_data(self):
-        if self.serial_worker.ser and self.serial_worker.ser.is_open:
+        # PERBAIKAN 1: Gunakan is_connected() agar support Mock
+        if self.serial_worker.is_connected():
             self.serial_worker.send_command("{D?}")
 
     def on_sensor_data_received(self, data):
@@ -138,10 +146,12 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # Update Progress
         try:
-            target = float(self.input_test_volume.toPlainText())
-            if target > 0:
-                percent = int((data["total_volume"] / target) * 100)
-                self.progress_bar_test.setValue(min(percent, 100))
+            target_str = self.input_test_volume.toPlainText()
+            if target_str:
+                target = float(target_str)
+                if target > 0:
+                    percent = int((data["total_volume"] / target) * 100)
+                    self.progress_bar_test.setValue(min(percent, 100))
         except:
             pass
 
@@ -151,20 +161,48 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             self.test_buffer["temp"].append(data["temp"])
             self.test_buffer["last_total_volume"] = data["total_volume"]
 
-    # --- Test Logic (Revised) ---
-    def start_test(self):
-        if not self.serial_worker.ser or not self.serial_worker.ser.is_open:
-            QtWidgets.QMessageBox.critical(self, "Error", "Serial Disconnected!")
+    # --- Test Logic (Revised Toggle) ---
+
+    def handle_test_toggle(self):
+        """Handler pintar untuk tombol Start/Stop."""
+        current_label = self.btn_test_start.text()
+
+        if current_label == "Start":
+            self.start_test_sequence()
+        else:
+            self.stop_test_sequence()
+
+    def start_test_sequence(self):
+        """Memulai Pengujian."""
+        # PERBAIKAN 2: Cek koneksi menggunakan is_connected() bukan .ser
+        if not self.serial_worker.is_connected():
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Serial belum terhubung! Silakan Connect dulu."
+            )
+            return
+
+        # 2. Validasi Input (Tidak boleh kosong)
+        vol_str = self.input_test_volume.toPlainText()
+        init_str = self.input_test_init_meter.toPlainText()
+
+        if not vol_str or not init_str:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Input Error",
+                "Volume Target dan Initial Meter tidak boleh kosong!",
+            )
             return
 
         try:
-            float(self.input_test_volume.toPlainText())
-            float(self.input_test_init_meter.toPlainText())
+            float(vol_str)
+            float(init_str)
         except ValueError:
-            QtWidgets.QMessageBox.warning(self, "Error", "Input Invalid!")
+            QtWidgets.QMessageBox.warning(
+                self, "Input Error", "Masukkan angka yang valid!"
+            )
             return
 
-        # Reset & Start
+        # 3. Reset Buffer & Kirim Command
         self.test_buffer = {
             "flow_rate": [],
             "pressure": [],
@@ -174,29 +212,50 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.serial_worker.send_command("{S:1}")  # Start MCU Counting
         self.serial_worker.send_command("{B:0,1}")  # Open Valve
 
+        # 4. Update UI State
         self.is_testing = True
-        self.btn_test_start.setEnabled(False)
-        self.btn_test_finish.setEnabled(True)
+        self.btn_test_start.setText("Stop")  # Ubah label jadi STOP
+        self.btn_test_finish.setEnabled(False)  # Finish tetap disable
         self.statusbar.showMessage("Test Started...")
 
-    def finish_test(self):
-        if not self.is_testing:
-            return
-
+    def stop_test_sequence(self):
+        """Menghentikan Pengujian."""
+        # 1. Kirim Command Stop (Valve dulu baru Test)
         self.serial_worker.send_command("{B:0,0}")  # Close Valve First
         self.serial_worker.send_command("{S:0}")  # Stop MCU Counting
 
+        # 2. Update UI State
         self.is_testing = False
-        self.btn_test_start.setEnabled(True)
-        self.btn_test_finish.setEnabled(False)
-        self.save_test_result()
+        self.btn_test_start.setText("Start")  # Balik jadi START
+        self.btn_test_finish.setEnabled(True)  # BARU Enable Finish
 
-    def save_test_result(self):
+        self.statusbar.showMessage("Test Stopped. Please Input Last Meter.")
+        QtWidgets.QMessageBox.information(
+            self,
+            "Info",
+            "Pengujian Dihentikan.\nSilakan input 'Last Meter' dan tekan Finish.",
+        )
+
+    def finish_test(self):
+        """Menyimpan Data (Hanya bisa diklik setelah Stop)."""
+        # 1. Validasi Input Akhir
+        last_meter_str = self.input_test_final_meter.toPlainText()
+
+        if not last_meter_str:
+            QtWidgets.QMessageBox.warning(
+                self, "Input Error", "Kolom 'Last Meter' harus diisi sebelum Finish!"
+            )
+            return
+
         try:
-            final = float(self.input_test_final_meter.toPlainText() or 0)
-        except:
-            final = 0.0
+            final_meter = float(last_meter_str)
+        except ValueError:
+            QtWidgets.QMessageBox.warning(
+                self, "Input Error", "'Last Meter' harus berupa angka!"
+            )
+            return
 
+        # 2. Hitung Rata-rata
         buff = self.test_buffer
         avg_flow = (
             sum(buff["flow_rate"]) / len(buff["flow_rate"]) if buff["flow_rate"] else 0
@@ -206,10 +265,11 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         )
         avg_temp = sum(buff["temp"]) / len(buff["temp"]) if buff["temp"] else 0
 
+        # 3. Simpan ke Database
         data = {
-            "volume_target": float(self.input_test_volume.toPlainText() or 0),
-            "initial_meter": float(self.input_test_init_meter.toPlainText() or 0),
-            "final_meter": final,
+            "volume_target": float(self.input_test_volume.toPlainText()),
+            "initial_meter": float(self.input_test_init_meter.toPlainText()),
+            "final_meter": final_meter,
             "actual_volume": buff["last_total_volume"],
             "avg_flow_rate": round(avg_flow, 2),
             "avg_pressure": round(avg_press, 2),
@@ -217,19 +277,27 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             "status": "FINISHED",
         }
         self.db.insert_test_log(data)
-        QtWidgets.QMessageBox.information(self, "Success", "Data Saved!")
+
+        # 4. Reset Tombol Finish (Disable lagi setelah save)
+        QtWidgets.QMessageBox.information(self, "Success", "Data Berhasil Disimpan!")
+        self.btn_test_finish.setEnabled(False)
+        self.statusbar.showMessage("Data Saved.")
 
     def reset_test_ui(self):
+        """Emergency Reset."""
         self.serial_worker.send_command("{B:0,0}")
         self.serial_worker.send_command("{S:0}")
+
         self.is_testing = False
+        self.btn_test_start.setText("Start")
         self.btn_test_start.setEnabled(True)
-        self.btn_test_finish.setEnabled(True)
+        self.btn_test_finish.setEnabled(False)
+
         self.input_test_volume.clear()
         self.input_test_init_meter.clear()
         self.input_test_final_meter.clear()
         self.progress_bar_test.setValue(0)
-        self.statusbar.showMessage("Reset Done.")
+        self.statusbar.showMessage("System Reset.")
 
     # --- Calibration Helpers ---
     def refresh_cal_dropdown(self, combo, type_):
@@ -239,7 +307,14 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def generic_cal_save(self, type_, ref_input, sens_val, combo, clear_input=True):
         try:
-            ref = float(ref_input.toPlainText())
+            ref_str = ref_input.toPlainText()
+            if not ref_str:
+                QtWidgets.QMessageBox.warning(
+                    self, "Error", "Input tidak boleh kosong!"
+                )
+                return
+
+            ref = float(ref_str)
             self.db.add_calibration_point(type_, sens_val, ref)
             self.refresh_cal_dropdown(combo, type_)
             if clear_input:
@@ -298,6 +373,10 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             self.display_cal_press_gain.setText(str(d[3]))
 
     def calibrate_flow_start(self):
+        # PERBAIKAN 3: Gunakan is_connected() untuk Flow Calibration juga
+        if not self.serial_worker.is_connected():
+            QtWidgets.QMessageBox.critical(self, "Error", "Serial Disconnected!")
+            return
         self.serial_worker.send_command("{S:1}")
         self.serial_worker.send_command("{B:0,1}")
 
