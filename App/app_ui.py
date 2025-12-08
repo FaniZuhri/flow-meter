@@ -1150,7 +1150,7 @@ class Ui_MainWindow(object):
         self.btn_nav_flow_cal.setText(_translate("MainWindow", "Flow Sens Calibration"))
         self.label.setText(_translate("MainWindow", "Volume\n"
 "                                                                                            to Test"))
-        self.label_32.setText(_translate("MainWindow", "Liter"))
+        self.label_32.setText(_translate("MainWindow", "Litre"))
         self.label_2.setText(_translate("MainWindow", "Initial\n"
 "                                                                                            Meter\n"
 "                                                                                            Volume"))
