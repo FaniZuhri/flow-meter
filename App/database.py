@@ -6,7 +6,6 @@ import os
 class DatabaseManager:
     """
     MODEL: Mengelola struktur data dan interaksi langsung dengan SQLite.
-    Menggunakan mekanisme UPSERT untuk manajemen titik kalibrasi yang fleksibel.
     """
 
     def __init__(self, db_name="water_meter_test.db"):
@@ -15,7 +14,6 @@ class DatabaseManager:
         self._init_default_water_meter_points()
 
     def _get_connection(self):
-        """Helper untuk membuat koneksi database"""
         return sqlite3.connect(self.db_name)
 
     def _init_db(self):
@@ -61,7 +59,6 @@ class DatabaseManager:
         conn.close()
 
     def _init_default_water_meter_points(self):
-        # Daftar titik debit standar
         wm_points = [6, 10, 128, 800, 1000, 1600, 2000, 2500]
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -75,8 +72,8 @@ class DatabaseManager:
                 """,
                     (
                         "FLOW",
-                        ref_val,  # Sensor value awal disamakan dengan ref
-                        ref_val,  # Anchor Point
+                        ref_val,
+                        ref_val,
                         1.0,
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     ),
@@ -90,7 +87,6 @@ class DatabaseManager:
     def upsert_calibration_point(
         self, sensor_type: str, sens_val: float, ref_val: float
     ):
-        # Hindari pembagian dengan nol
         if sens_val == 0:
             gain = 1.0
         else:
@@ -126,10 +122,6 @@ class DatabaseManager:
             conn.close()
 
     def get_calibration_points(self, sensor_type: str) -> list:
-        """
-        [DITAMBAHKAN KEMBALI]
-        Mengambil history data kalibrasi lengkap untuk UI (ComboBox).
-        """
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
@@ -149,10 +141,30 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_calibration_point_by_id(self, point_id: int):
+        """
+        [NEW] Mengambil detail satu titik kalibrasi berdasarkan ID.
+        Digunakan untuk menampilkan detail Gain/Ref saat user memilih dropdown.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, sensor_value, reference_value, gain_factor, timestamp 
+                FROM calibration_points 
+                WHERE id = ?
+            """,
+                (point_id,),
+            )
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"[DB Error] Get Point by ID: {e}")
+            return None
+        finally:
+            conn.close()
+
     def get_sorted_calibration_data(self, sensor_type: str) -> tuple[list, list]:
-        """
-        Mengambil data kalibrasi untuk keperluan interpolasi (NumPy).
-        """
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
@@ -177,16 +189,13 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def delete_calibration_point(self, sensor_type: str, ref_val: float):
+    def delete_calibration_point(self, point_id: int):
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                """
-                DELETE FROM calibration_points 
-                WHERE sensor_type = ? AND reference_value = ?
-            """,
-                (sensor_type, ref_val),
+                "DELETE FROM calibration_points WHERE id = ?",
+                (point_id,),
             )
             conn.commit()
         except Exception as e:
