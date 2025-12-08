@@ -49,7 +49,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             "total_volume": 0.0,
         }
 
-        # --- Timer Polling (Hanya untuk IDLE state) ---
+        # --- Timer Polling ---
         self.poll_timer = QTimer()
         self.poll_timer.timeout.connect(self.send_data_request)
         self.poll_timer.setInterval(500)
@@ -65,56 +65,79 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.progress_bar_test.setValue(0)
 
     def init_ui_connections(self):
-        # Header
         self.btn_connect.clicked.connect(self.toggle_connection)
 
-        # Navigasi
         self.btn_nav_test.clicked.connect(lambda: self.navigate_to(0))
         self.btn_nav_temp_cal.clicked.connect(lambda: self.navigate_to(1))
         self.btn_nav_press_cal.clicked.connect(lambda: self.navigate_to(2))
         self.btn_nav_flow_cal.clicked.connect(lambda: self.navigate_to(3))
 
-        # Test Page
         self.btn_test_start.clicked.connect(self.handle_test_button)
         self.btn_test_finish.clicked.connect(self.save_test_result)
         self.btn_test_reset.clicked.connect(self.reset_test_ui)
 
-        # Calibration Pages Handlers...
+        # Temp Calibration
         self.btn_cal_temp_save.clicked.connect(
             lambda: self.save_calibration_generic("TEMP")
         )
+        # Pass widget display (Ref & Gain) ke fungsi delete agar bisa dibersihkan
         self.btn_cal_temp_delete.clicked.connect(
-            lambda: self.delete_calibration(self.cmb_cal_temp_history, "TEMP")
+            lambda: self.delete_calibration(
+                self.cmb_cal_temp_history,
+                "TEMP",
+                self.testInitDutCount_2,
+                self.display_cal_temp_gain,
+            )
         )
+        # Saat dropdown berubah, update Gain & Ref display
         self.cmb_cal_temp_history.currentIndexChanged.connect(
             lambda: self.load_cal_details(
-                self.cmb_cal_temp_history, self.display_cal_temp_gain
+                self.cmb_cal_temp_history,
+                self.testInitDutCount_2,
+                self.display_cal_temp_gain,
             )
         )
 
+        # Pressure Calibration
         self.btn_cal_press_save.clicked.connect(
             lambda: self.save_calibration_generic("PRESS")
         )
         self.btn_cal_press_delete.clicked.connect(
-            lambda: self.delete_calibration(self.cmb_cal_press_history, "PRESS")
+            lambda: self.delete_calibration(
+                self.cmb_cal_press_history,
+                "PRESS",
+                self.testInitDutCount_3,
+                self.display_cal_press_gain,
+            )
         )
         self.cmb_cal_press_history.currentIndexChanged.connect(
             lambda: self.load_cal_details(
-                self.cmb_cal_press_history, self.display_cal_press_gain
+                self.cmb_cal_press_history,
+                self.testInitDutCount_3,
+                self.display_cal_press_gain,
             )
         )
 
+        # Flow Calibration
         self.btn_cal_flow_start.clicked.connect(self.start_flow_cal)
         self.btn_cal_flow_stop.clicked.connect(self.stop_flow_cal)
         self.btn_cal_flow_save.clicked.connect(self.save_flow_calibration)
         self.btn_cal_flow_delete.clicked.connect(
-            lambda: self.delete_calibration(self.cmb_cal_flow_history, "FLOW")
+            lambda: self.delete_calibration(
+                self.cmb_cal_flow_history,
+                "FLOW",
+                self.testLastDutCount_7,
+                self.testLastDutCount_6,
+            )
         )
         self.cmb_cal_flow_history.currentIndexChanged.connect(
             lambda: self.load_cal_details(
-                self.cmb_cal_flow_history, self.testLastDutCount_6
+                self.cmb_cal_flow_history,
+                self.testLastDutCount_7,
+                self.testLastDutCount_6,
             )
         )
+
         if hasattr(self, "testResetBtn_10"):
             self.testResetBtn_10.clicked.connect(self.reset_flow_cal_ui)
 
@@ -140,7 +163,6 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.statusbar.showMessage(f"Serial: {message}")
         if connected:
             self.btn_connect.setText("Disconnect")
-            # Mulai polling saat idle
             self.poll_timer.start()
         else:
             self.btn_connect.setText("Connect")
@@ -150,10 +172,6 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             self.btn_test_start.setEnabled(True)
 
     def send_data_request(self):
-        """
-        Hanya dipanggil saat IDLE (Timer aktif).
-        Saat Testing, fungsi ini TIDAK AKAN dipanggil karena timer di-stop.
-        """
         if self.serial.is_running:
             self.serial.send_command("{D?}")
 
@@ -166,7 +184,6 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         elif index == 3:
             self.refresh_cal_combo(self.cmb_cal_flow_history, "FLOW")
 
-    # --- CORE LOGIC ---
     def on_sensor_data(self, raw_data):
         self.latest_raw_data = raw_data
 
@@ -175,11 +192,10 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         raw_temp = raw_data.get("temp", 0.0)
         raw_vol = raw_data.get("total_volume", 0.0)
 
-        # Koreksi Data
         corr_temp = self.calib_mgr.get_corrected_value("TEMP", raw_temp)
         corr_press = self.calib_mgr.get_corrected_value("PRESS", raw_press)
-
         flow_gain = self.calib_mgr.get_interpolated_gain("FLOW", raw_flow)
+
         corr_flow = raw_flow * flow_gain
         corr_vol = raw_vol * flow_gain
 
@@ -190,14 +206,12 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             "total_volume": corr_vol,
         }
 
-        # Update LCDs
         self.lcd_flow.display(corr_flow)
         self.lcd_press.display(corr_press)
         self.lcd_temp.display(corr_temp)
         self.lcd_cal_temp_sensor.display(corr_temp)
         self.lcd_cal_press_sensor.display(corr_press)
 
-        # Logic Pengujian
         if self.is_testing:
             self.current_session_data["flow_rate"].append(corr_flow)
             self.current_session_data["pressure"].append(corr_press)
@@ -220,7 +234,6 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
     def on_command_response(self, cmd_id, val):
         self.statusbar.showMessage(f"MCU Responded: {cmd_id} -> {val}", 3000)
 
-    # --- TEST PAGE LOGIC ---
     def handle_test_button(self):
         if self.btn_test_start.text() == "Start":
             self.start_test()
@@ -250,14 +263,9 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             "temp": [],
             "last_total_volume": 0.0,
         }
-
-        # 1. Stop Timer Polling (Karena MCU akan streaming)
         self.poll_timer.stop()
-
-        # 2. Kirim Command Start
         self.serial.send_command("{S:1}")
         self.serial.send_command("{B:0,1}")
-
         self.btn_test_start.setText("Stop")
         self.btn_test_finish.setEnabled(False)
         self.progress_bar_test.setValue(0)
@@ -266,27 +274,17 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
     def force_stop_test(self, reason="Stopped"):
         if not self.is_testing:
             return
-
-        # 1. Kirim Command Stop
         self.serial.send_command("{B:0,0}")
         self.serial.send_command("{S:0}")
-
-        # 2. Update State
         self.is_testing = False
-
-        # 3. Resume Timer Polling (Untuk update data IDLE)
         self.poll_timer.start()
-
         self.btn_test_start.setText("Start")
         self.btn_test_finish.setEnabled(True)
-
         final_vol = self.current_session_data["last_total_volume"]
         QtWidgets.QMessageBox.information(
             self,
             "Info",
-            f"Pengujian Selesai: {reason}\n"
-            f"Volume Tercatat: {final_vol:.3f} Liter\n"
-            f"Silakan masukkan 'Final Meter Value'.",
+            f"Pengujian Selesai: {reason}\nVolume Tercatat: {final_vol:.3f} Liter\nSilakan masukkan 'Final Meter Value'.",
         )
 
     def save_test_result(self):
@@ -302,7 +300,6 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
         measured_volume = final_meter - init_meter
         actual_volume = self.current_session_data["last_total_volume"]
-
         error_rate = 0.0
         if actual_volume > 0:
             error_rate = ((measured_volume - actual_volume) / actual_volume) * 100
@@ -324,18 +321,12 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             "avg_temp": round(avg_temp, 2),
             "status": "FINISHED",
         }
-
         self.db.insert_test_log(log_data)
-
-        msg = (
-            f"Data Saved!\nSys Vol (Corr): {actual_volume:.3f} L\nMeter Vol: {measured_volume:.3f} L\n"
-            f"Error: {error_rate:.2f} %"
-        )
+        msg = f"Data Saved!\nSys Vol (Corr): {actual_volume:.3f} L\nMeter Vol: {measured_volume:.3f} L\nError: {error_rate:.2f} %"
         if abs(error_rate) <= 2.0:
             msg += "\n[PASSED]"
         else:
             msg += "\n[FAILED]"
-
         QtWidgets.QMessageBox.information(self, "Result", msg)
         self.btn_test_finish.setEnabled(False)
 
@@ -347,7 +338,6 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.input_test_final_meter.clear()
         self.progress_bar_test.setValue(0)
 
-    # --- CALIBRATION (UPDATED FOR STREAMING LOGIC) ---
     def save_calibration_generic(self, sensor_type):
         if sensor_type == "TEMP":
             input_widget = self.input_cal_temp_ref
@@ -375,10 +365,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             return
         self.is_calibrating_flow = True
         self.calib_flow_buffer = []
-
-        # STOP Timer karena MCU akan streaming
         self.poll_timer.stop()
-
         self.serial.send_command("{S:1}")
         self.serial.send_command("{B:0,1}")
         self.statusbar.showMessage("Flow Calibration Started...")
@@ -387,10 +374,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.serial.send_command("{B:0,0}")
         self.serial.send_command("{S:0}")
         self.is_calibrating_flow = False
-
-        # RESUME Timer setelah stop
         self.poll_timer.start()
-
         self.statusbar.showMessage("Flow Calibration Stopped.")
         raw_vol_end = self.latest_raw_data["total_volume"]
         self.testLastDutCount_8.setText(f"{raw_vol_end:.2f}")
@@ -399,31 +383,23 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         try:
             ref_vol = float(self.input_cal_flow_ref.toPlainText().strip())
             raw_vol = self.latest_raw_data["total_volume"]
-
             if raw_vol <= 0:
                 raise ValueError("Sensor Volume is 0")
-
             target_gain = ref_vol / raw_vol
-
             if not self.calib_flow_buffer:
                 avg_flow_rate = self.latest_raw_data["flow_rate"]
             else:
                 avg_flow_rate = statistics.mean(self.calib_flow_buffer)
-
             artificial_ref_flow = avg_flow_rate * target_gain
-
             self.db.upsert_calibration_point("FLOW", avg_flow_rate, artificial_ref_flow)
-
             self.refresh_cal_combo(self.cmb_cal_flow_history, "FLOW")
             self.input_cal_flow_ref.clear()
             self.testLastDutCount_8.clear()
-
             QtWidgets.QMessageBox.information(
                 self,
                 "Success",
                 f"Flow Calibrated!\nAvg Flow: {avg_flow_rate:.1f} L/h\nGain: {target_gain:.4f}",
             )
-
         except ValueError as e:
             QtWidgets.QMessageBox.warning(self, "Error", f"Input Invalid: {e}")
 
@@ -432,41 +408,57 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.testLastDutCount_8.clear()
         self.testLastDutCount_6.clear()
 
-    # --- HELPERS ---
     def refresh_cal_combo(self, combo_box, sensor_type):
         combo_box.clear()
         points = self.db.get_calibration_points(sensor_type)
         for p in points:
-            text = f"ID:{p[0]} | Sens:{p[1]:.2f} | Ref:{p[2]:.2f} | Gain:{p[3]:.4f}"
+            # Tampilan Bersih: Ref & Sens
+            text = f"Ref: {p[2]:.2f} | Sens: {p[1]:.2f}"
             combo_box.addItem(text, userData=p[0])
 
-    def load_cal_details(self, combo, display_widget):
-        text = combo.currentText()
-        if "Gain:" in text:
-            try:
-                gain_str = text.split("Gain:")[1].strip()
-                display_widget.setText(gain_str)
-            except:
-                pass
-
-    def delete_calibration(self, combo, sensor_type):
-        text = combo.currentText()
-        if not text:
+    def load_cal_details(self, combo, ref_display, gain_display):
+        """
+        [NEW] Mengambil detail lengkap dari DB berdasarkan ID item dropdown.
+        Memperbarui tampilan Reference Value dan Gain Factor.
+        """
+        curr_id = combo.currentData()
+        if not curr_id:
+            # Kosongkan jika tidak ada pilihan
+            ref_display.clear()
+            gain_display.clear()
             return
-        try:
-            ref_part = text.split("|")[2]
-            ref_val = float(ref_part.split(":")[1].strip())
-            reply = QtWidgets.QMessageBox.question(
-                self,
-                "Delete",
-                f"Delete point @ Ref {ref_val}?",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            )
-            if reply == QtWidgets.QMessageBox.Yes:
-                self.db.delete_calibration_point(sensor_type, ref_val)
-                self.refresh_cal_combo(combo, sensor_type)
-        except Exception as e:
-            print(f"Delete parse error: {e}")
+
+        # Query detail lengkap dari DB
+        point = self.db.get_calibration_point_by_id(curr_id)
+        if point:
+            # point: (id, sensor_val, reference_value, gain_factor, timestamp)
+            ref_val = point[2]
+            gain_val = point[3]
+
+            ref_display.setText(f"{ref_val:.2f}")
+            gain_display.setText(f"{gain_val:.4f}")
+
+    def delete_calibration(self, combo, sensor_type, ref_display, gain_display):
+        """
+        [NEW] Menghapus data dan membersihkan tampilan detail.
+        """
+        id_to_del = combo.currentData()
+        if not id_to_del:
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Delete",
+            "Delete this calibration point?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.db.delete_calibration_point(id_to_del)
+            self.refresh_cal_combo(combo, sensor_type)
+            # Bersihkan detail setelah delete
+            ref_display.clear()
+            gain_display.clear()
 
 
 if __name__ == "__main__":
