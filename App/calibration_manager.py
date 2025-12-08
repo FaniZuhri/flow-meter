@@ -11,8 +11,9 @@ class CalibrationManager:
     Logic: Corrected Value = Raw Value * Interpolated Gain Factor
     """
 
-    # Tipe sensor yang didukung
-    SUPPORTED_SENSORS = ("FLOW", "TEMP", "PRESSURE")
+    # Tipe sensor yang didukung (Disesuaikan dengan string di main.py)
+    # "PRESS" digunakan di main.py, bukan "PRESSURE"
+    SUPPORTED_SENSORS = ("FLOW", "TEMP", "PRESS")
 
     def __init__(self, db_manager: DatabaseManager):
         """
@@ -25,16 +26,10 @@ class CalibrationManager:
     ) -> float:
         """
         Mencari Gain Factor yang tepat untuk nilai sensor saat ini menggunakan Interpolasi Linear.
-
-        Args:
-            sensor_type: Tipe sensor ('FLOW', 'TEMP', 'PRESSURE').
-            current_raw_value: Nilai mentah (raw) yang dibaca sensor saat ini.
-
-        Returns:
-            Gain factor (float) yang diinterpolasi. Default adalah 1.0 jika tidak ada data kalibrasi.
         """
         if sensor_type not in self.SUPPORTED_SENSORS:
-            print(f"[Calib Error] Sensor type '{sensor_type}' not supported.")
+            # Debugging opsional, bisa di-comment jika mengganggu
+            # print(f"[Calib Error] Sensor type '{sensor_type}' not supported.")
             return 1.0
 
         # 1. Ambil data titik kalibrasi yang sudah diurutkan dari database
@@ -43,7 +38,6 @@ class CalibrationManager:
 
         # 2. Jika tidak ada data kalibrasi sama sekali, gunakan Gain default (1.0)
         if not x_points:
-            # print(f"[Calib] No calibration data for {sensor_type}. Using default gain 1.0")
             return 1.0
 
         # 3. Konversi ke numpy array untuk performa interpolasi
@@ -53,8 +47,6 @@ class CalibrationManager:
         fp = np.array(y_points, dtype=float)  # Sumbu Y: Gain Factor (Titik kalibrasi)
 
         # 4. Lakukan Interpolasi Linear menggunakan numpy.interp
-        # np.interp secara otomatis menangani "clamping" (menggunakan gain dari titik terdekat)
-        # jika current_raw_value berada di luar rentang xp.
         interpolated_gain = np.interp(current_raw_value, xp, fp)
 
         return float(interpolated_gain)
@@ -64,13 +56,6 @@ class CalibrationManager:
     ) -> float:
         """
         Menghitung nilai sensor terkoreksi menggunakan Gain Factor hasil interpolasi.
-
-        Args:
-            sensor_type: Tipe sensor ('FLOW', 'TEMP', 'PRESSURE').
-            current_raw_value: Nilai mentah (raw) yang dibaca sensor saat ini.
-
-        Returns:
-            Nilai terkoreksi (float).
         """
         # Dapatkan Gain Factor dinamis
         gain = self.get_interpolated_gain(sensor_type, current_raw_value)
