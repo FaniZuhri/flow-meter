@@ -13,10 +13,22 @@ from calibration_manager import CalibrationManager
 ## @class WaterMeterApp
 #  @brief Main Controller Class (Main Window) of the application.
 #
-#  Connects business logic (Model/Worker) with the user interface (View).
-#  Handles testing flow, calibration, and real-time display updates.
+#  This class serves as the central controller, connecting the business logic
+#  (Database, Serial Communication, Calibration) with the user interface (View).
+#  It manages the application state, handles user interactions, processes sensor data,
+#  and updates the GUI in real-time.
+#
+#  @details
+#  Key responsibilities include:
+#  - Managing the connection to the microcontroller via SerialWorker.
+#  - Handling the automated testing workflow (Start/Stop logic).
+#  - Implementing differential volume correction to handle unstable flow rates.
+#  - Managing sensor calibration (Temperature, Pressure, Flow).
+#  - Displaying real-time sensor data on the dashboard.
 class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
+    ## @brief Constructor for the main application window.
+    #  Initializes the UI, models, workers, state variables, and connections.
     def __init__(self):
         super().__init__()
         self.setupUi(self)
@@ -55,6 +67,12 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.is_calibrating_flow = False
         self.target_volume = 0.0
 
+        # --- DIFFERENTIAL ACCUMULATORS (Crucial for Unstable Flow) ---
+        # Tracks the Raw Volume value from the PREVIOUS packet to calculate delta.
+        self.last_process_raw_vol = 0.0
+        # Accumulates the Corrected Volume delta-by-delta.
+        self.accumulated_corrected_vol = 0.0
+
         # Data Buffer (Stores CORRECTED data for Test session)
         self.current_session_data = {
             "flow_rate": [],
@@ -66,7 +84,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         # Buffer specifically for RAW flow rate data during flow calibration
         self.calib_flow_buffer = []
 
-        # Stores last RAW data snapshot (needed for saving calibration)
+        # Stores last RAW data snapshot
         self.latest_raw_data = {
             "flow_rate": 0.0,
             "pressure": 0.0,
@@ -231,12 +249,13 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
     ## @brief Main callback when sensor data is received from SerialWorker.
     #
-    #  Logic Flow:
-    #  1. Receive RAW data.
-    #  2. Store RAW (for calibration purposes).
-    #  3. Calculate CORRECTED (using CalibrationManager).
-    #  4. Update LCD UI.
-    #  5. If testing -> Buffer data & Check target volume.
+    #  Logic Flow (Differential Integration):
+    #  1. Calculate Delta Raw Volume (Current - Last).
+    #  2. Calculate Delta Corrected Volume = Delta Raw * Gain(Current Flow).
+    #  3. Accumulate Corrected Volume.
+    #
+    #  This ensures that volume accumulated at low flow is corrected with low-flow gain,
+    #  and volume at high flow with high-flow gain, regardless of fluctuation.
     #
     #  @param raw_data Dictionary containing raw sensor data.
     def on_sensor_data(self, raw_data):
@@ -245,25 +264,53 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         raw_flow = raw_data.get("flow_rate", 0.0)
         raw_press = raw_data.get("pressure", 0.0)
         raw_temp = raw_data.get("temp", 0.0)
-        raw_vol = raw_data.get("total_volume", 0.0)
+
+        # Raw Total Volume from MCU
+        current_total_raw_vol = raw_data.get("total_volume", 0.0)
 
         # --- CORRECTION LOGIC ---
-        # Temp & Pressure corrected based on their own values
+        # Temp & Pressure corrected normally
         corr_temp = self.calib_mgr.get_corrected_value("TEMP", raw_temp)
         corr_press = self.calib_mgr.get_corrected_value("PRESS", raw_press)
 
-        # Flow & Volume corrected using Gain Factor from current Flow Rate
-        # Assumption: Volume error is proportional to flow rate error
+        # 1. Get Gain for Current Flow Rate
         flow_gain = self.calib_mgr.get_interpolated_gain("FLOW", raw_flow)
 
+        # 2. Correct Flow Rate
         corr_flow = raw_flow * flow_gain
-        corr_vol = raw_vol * flow_gain
 
+        # 3. Correct Volume (Differential Approach)
+        # Calculate how much raw volume increased since last packet
+        delta_raw_vol = current_total_raw_vol - self.last_process_raw_vol
+
+        # Handle potential reset or negative delta (e.g., if MCU reset volume)
+        if delta_raw_vol < 0:
+            delta_raw_vol = (
+                current_total_raw_vol  # Assume reset to 0, so delta is the whole value
+            )
+
+        # Apply current gain ONLY to the new volume increment
+        delta_corr_vol = delta_raw_vol * flow_gain
+
+        # Accumulate corrected volume
+        # If not testing/calibrating, we just show corrected 'total' based on simple multiplication
+        # to avoid infinite accumulation drift in IDLE mode.
+        if self.is_testing or self.is_calibrating_flow:
+            self.accumulated_corrected_vol += delta_corr_vol
+            corr_vol_display = self.accumulated_corrected_vol
+        else:
+            # In IDLE mode, just show snapshot correction to keep it simple
+            corr_vol_display = current_total_raw_vol * flow_gain
+
+        # Update Last Processed Value
+        self.last_process_raw_vol = current_total_raw_vol
+
+        # Store Data
         self.latest_corrected_data = {
             "flow_rate": corr_flow,
             "pressure": corr_press,
             "temp": corr_temp,
-            "total_volume": corr_vol,
+            "total_volume": corr_vol_display,
         }
 
         # Update LCD Display
@@ -278,20 +325,26 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             self.current_session_data["flow_rate"].append(corr_flow)
             self.current_session_data["pressure"].append(corr_press)
             self.current_session_data["temp"].append(corr_temp)
-            self.current_session_data["last_total_volume"] = corr_vol
+
+            # Update session volume with the ACCUMULATED corrected volume
+            self.current_session_data["last_total_volume"] = (
+                self.accumulated_corrected_vol
+            )
 
             if self.target_volume > 0:
-                progress = int((corr_vol / self.target_volume) * 100)
+                progress = int(
+                    (self.accumulated_corrected_vol / self.target_volume) * 100
+                )
                 self.progress_bar_test.setValue(min(progress, 100))
                 self.statusbar.showMessage(
-                    f"Testing: {corr_vol:.2f} / {self.target_volume:.2f} L"
+                    f"Testing: {self.accumulated_corrected_vol:.2f} / {self.target_volume:.2f} L"
                 )
 
-                # Auto-Stop when target reached
-                if corr_vol >= self.target_volume:
+                # Auto-Stop
+                if self.accumulated_corrected_vol >= self.target_volume:
                     self.force_stop_test("Target Volume Reached!")
 
-        # Buffer for Flow Calibration (storing RAW flow rate for averaging)
+        # Flow Calibration Buffer
         if self.is_calibrating_flow:
             self.calib_flow_buffer.append(raw_flow)
 
@@ -333,7 +386,11 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             "last_total_volume": 0.0,
         }
 
-        # STOP Polling timer during testing (Streaming Mode)
+        # RESET DIFFERENTIAL ACCUMULATORS
+        self.last_process_raw_vol = 0.0  # Assuming MCU resets to 0 on {S:1}
+        self.accumulated_corrected_vol = 0.0
+
+        # STOP Polling
         self.poll_timer.stop()
 
         self.serial.send_command("{S:1}")
@@ -377,7 +434,9 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             return
 
         measured_volume = final_meter - init_meter
+        # Use accumulated corrected volume
         actual_volume = self.current_session_data["last_total_volume"]
+
         error_rate = 0.0
         if actual_volume > 0:
             error_rate = ((measured_volume - actual_volume) / actual_volume) * 100
@@ -423,7 +482,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.input_test_final_meter.clear()
         self.progress_bar_test.setValue(0)
 
-    # --- GENERIC CALIBRATION LOGIC (TEMP & PRESS) ---
+    # --- CALIBRATION LOGIC ---
 
     ## @brief Saves single point calibration for Temp/Pressure.
     #  Uses the last RAW data stored in memory.
@@ -458,13 +517,16 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             return
         self.is_calibrating_flow = True
         self.calib_flow_buffer = []
+
+        # Reset Accumulators
+        self.last_process_raw_vol = 0.0
+        self.accumulated_corrected_vol = 0.0
+
         self.poll_timer.stop()
         self.serial.send_command("{S:1}")
         self.serial.send_command("{B:0,1}")
         self.statusbar.showMessage("Flow Calibration Started...")
 
-    ## @brief Stops flow calibration session.
-    #  Displays last raw volume for user reference input.
     def stop_flow_cal(self):
         self.serial.send_command("{B:0,0}")
         self.serial.send_command("{S:0}")
@@ -472,7 +534,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.poll_timer.start()
         self.statusbar.showMessage("Flow Calibration Stopped.")
 
-        # Display Raw Volume so user knows what reference to input
+        # For calibration reference, we usually want the RAW volume the sensor saw
         raw_vol_end = self.latest_raw_data["total_volume"]
         self.ui_set_flow_raw_vol.setText(f"{raw_vol_end:.2f}")
 
@@ -515,7 +577,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.ui_set_flow_raw_vol.clear()
         self.ui_view_flow_gain.clear()
 
-    # --- HELPERS (VIEW UPDATES) ---
+    # --- HELPERS ---
 
     ## @brief Populates dropdown with filtered calibration history.
     def refresh_cal_combo(self, combo_box, sensor_type):
