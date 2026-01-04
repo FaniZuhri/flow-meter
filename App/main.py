@@ -394,7 +394,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.poll_timer.stop()
 
         self.serial.send_command("{S:1}")
-        self.serial.send_command("{B:0,1}")
+        self.serial.send_command("{B:1,1}")
         self.btn_test_start.setText("Stop")
         self.btn_test_finish.setEnabled(False)
         self.progress_bar_test.setValue(0)
@@ -481,6 +481,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
         self.input_test_init_meter.clear()
         self.input_test_final_meter.clear()
         self.progress_bar_test.setValue(0)
+        self.btn_test_finish.setEnabled(False)
 
     # --- CALIBRATION LOGIC ---
 
@@ -524,7 +525,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.poll_timer.stop()
         self.serial.send_command("{S:1}")
-        self.serial.send_command("{B:0,1}")
+        self.serial.send_command("{B:1,1}")
         self.statusbar.showMessage("Flow Calibration Started...")
 
     def stop_flow_cal(self):
@@ -573,6 +574,7 @@ class WaterMeterApp(QtWidgets.QMainWindow, Ui_MainWindow):
             QtWidgets.QMessageBox.warning(self, "Error", f"Input Invalid: {e}")
 
     def reset_flow_cal_ui(self):
+        self.btn_cal_flow_save.setEnabled(False)
         self.input_cal_flow_ref.clear()
         self.ui_set_flow_raw_vol.clear()
         self.ui_view_flow_gain.clear()
