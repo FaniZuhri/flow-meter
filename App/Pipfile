@@ -4,12 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pyqt5 = "==5.15.11"
-pyserial = "==3.5"
 numpy = "==2.3.5"
+pyserial = "==3.5"
+pyqt5 = "*"
 
 [dev-packages]
 
 [requires]
-python_version = "3.11"
-python_full_version = "3.11.9"
+python_version = "3.13"
