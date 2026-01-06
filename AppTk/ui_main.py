@@ -7,6 +7,7 @@ import math
 # Imports from other files
 from controller import MeasurementEngine
 from ui_styles import apply_theme
+from ui_numpad import TouchNumpad
 
 
 class WaterMeterAppTk(tk.Tk):
@@ -24,7 +25,6 @@ class WaterMeterAppTk(tk.Tk):
         # --- Setup UI ---
         apply_theme(self)
 
-        # Load Assets (Logo)
         self.logo_img = None
         self._load_assets()
 
@@ -36,49 +36,28 @@ class WaterMeterAppTk(tk.Tk):
         self.after(500, self._poll_sensor_routine)
 
     def _load_assets(self):
-        """
-        Loads the logo and 'stretches' (scales) it to exactly 100px width
-        using fractional resizing (zoom * subsample).
-        """
+        """Loads and stretches logo."""
         logo_path = os.path.join("assets", "logo.png")
         if os.path.exists(logo_path):
             try:
-                # 1. Load original
                 src_img = tk.PhotoImage(file=logo_path)
-
-                # 2. Target Dimensions
                 TARGET_WIDTH = 100
                 orig_w = src_img.width()
-
-                # 3. Calculate Rational Scaling Factors
-                # We want: New_W = Old_W * (zoom / subsample) = 100
-                # Therefore: zoom / subsample = 100 / Old_W
-                # We simplify the fraction 100/Old_W to keep memory usage low.
-
                 common_divisor = math.gcd(TARGET_WIDTH, orig_w)
                 zoom_factor = TARGET_WIDTH // common_divisor
                 subsample_factor = orig_w // common_divisor
 
-                # Safety Check: If zoom factor is huge (e.g. > 20), it might crash Pi memory.
-                # If so, fall back to simple integer downsampling.
                 if zoom_factor > 10:
-                    simple_factor = int(orig_w / TARGET_WIDTH)
-                    if simple_factor < 1:
-                        simple_factor = 1
+                    simple_factor = int(orig_w / TARGET_WIDTH) or 1
                     self.logo_img = src_img.subsample(simple_factor)
                 else:
-                    # Perform precise scaling
                     self.logo_img = src_img.zoom(zoom_factor).subsample(
                         subsample_factor
                     )
 
-                # 4. Set Window/Taskbar Icon
                 self.iconphoto(False, self.logo_img)
-
             except Exception as e:
                 print(f"Error loading logo: {e}")
-        else:
-            print(f"Logo not found at {logo_path}")
 
     def _build_ui(self):
         main_container = ttk.Frame(self)
@@ -89,17 +68,14 @@ class WaterMeterAppTk(tk.Tk):
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
-        # --- Sidebar Header (Logo + Title) ---
-        # Reduced padding to save vertical space
         f_header = ttk.Frame(sidebar, style="Sidebar.TFrame")
         f_header.pack(pady=(10, 5))
 
-        # 1. Logo
         if self.logo_img:
-            lbl_logo = ttk.Label(f_header, image=self.logo_img, style="Sidebar.TLabel")
-            lbl_logo.pack(side="top", pady=(0, 5))
+            ttk.Label(f_header, image=self.logo_img, style="Sidebar.TLabel").pack(
+                side="top", pady=(0, 5)
+            )
 
-        # 2. Title (Smaller Font)
         ttk.Label(
             f_header,
             text="WMTK Proto",
@@ -108,8 +84,6 @@ class WaterMeterAppTk(tk.Tk):
             justify="center",
         ).pack(side="top")
 
-        # --- Navigation ---
-        # Added a small container to group nav buttons
         f_nav = ttk.Frame(sidebar, style="Sidebar.TFrame")
         f_nav.pack(fill="x", pady=5)
 
@@ -129,10 +103,8 @@ class WaterMeterAppTk(tk.Tk):
                 command=lambda p=page: self.show_page(p),
             ).pack(fill="x", pady=1)
 
-        # Spacer pushes connection box to the bottom
         ttk.Frame(sidebar, style="Sidebar.TFrame").pack(fill="both", expand=True)
 
-        # --- Connection Box ---
         conn_frame = ttk.Frame(sidebar, style="Sidebar.TFrame")
         conn_frame.pack(side="bottom", fill="x", padx=10, pady=10)
 
@@ -173,6 +145,18 @@ class WaterMeterAppTk(tk.Tk):
         self._create_flow_page()
         self.show_page("test")
 
+    # --- TOUCH INPUT HELPER ---
+    def bind_touch_numpad(self, widget, title="Input"):
+        """Binds click event to open the custom numpad."""
+        widget.bind("<Button-1>", lambda e: self._open_numpad(widget, title))
+
+    def _open_numpad(self, widget, title):
+        TouchNumpad(self, widget, title)
+        # Return 'break' to prevent default focus behavior if necessary
+        return "break"
+
+    # --- PAGES ---
+
     def _create_test_page(self):
         p = ttk.Frame(self.content_area)
         self.pages["test"] = p
@@ -180,14 +164,12 @@ class WaterMeterAppTk(tk.Tk):
             anchor="w", pady=(0, 10)
         )
 
-        # Live Cards
         f_cards = ttk.Frame(p)
         f_cards.pack(fill="x", pady=0)
         self.lbl_flow_val = self._make_card(f_cards, "Flow Rate (L/h)", "#007BFF")
         self.lbl_press_val = self._make_card(f_cards, "Pressure (Bar)", "#28A745")
         self.lbl_temp_val = self._make_card(f_cards, "Temp (°C)", "#DC3545")
 
-        # Input Form
         f_form = ttk.Labelframe(p, text="Test Parameters", padding=15)
         f_form.pack(fill="x", pady=15)
 
@@ -198,9 +180,12 @@ class WaterMeterAppTk(tk.Tk):
         ).pack(side="left")
         self.ent_test_vol = ttk.Entry(f_row1, width=12)
         self.ent_test_vol.pack(side="left", padx=(5, 25))
+        self.bind_touch_numpad(self.ent_test_vol, "Target Volume")  # <--- BINDING
+
         ttk.Label(f_row1, text="2. Init Meter (m³):").pack(side="left")
         self.ent_test_init = ttk.Entry(f_row1, width=12)
         self.ent_test_init.pack(side="left", padx=(5, 0))
+        self.bind_touch_numpad(self.ent_test_init, "Initial Meter")  # <--- BINDING
 
         ttk.Separator(f_form, orient="horizontal").pack(fill="x", pady=(0, 10))
 
@@ -209,6 +194,8 @@ class WaterMeterAppTk(tk.Tk):
         ttk.Label(f_row2, text="3. Final Meter (m³):").pack(side="left")
         self.ent_test_final = ttk.Entry(f_row2, width=12)
         self.ent_test_final.pack(side="left", padx=(5, 10))
+        self.bind_touch_numpad(self.ent_test_final, "Final Meter")  # <--- BINDING
+
         ttk.Label(
             f_row2,
             text="(Input after test finishes)",
@@ -216,7 +203,6 @@ class WaterMeterAppTk(tk.Tk):
             font=("Segoe UI", 9, "italic"),
         ).pack(side="left")
 
-        # Actions
         f_actions = ttk.Frame(p)
         f_actions.pack(fill="x", pady=5)
         self.btn_test_start = ttk.Button(
@@ -412,6 +398,7 @@ class WaterMeterAppTk(tk.Tk):
         ent_ref = ttk.Entry(f_cal, width=15)
         ent_ref.grid(row=1, column=1, sticky="w", padx=5, pady=5)
         setattr(self, ref_ent_attr, ent_ref)
+        self.bind_touch_numpad(ent_ref, f"Ref {unit}")  # <--- BINDING
 
         ttk.Button(
             f_cal,
@@ -485,9 +472,12 @@ class WaterMeterAppTk(tk.Tk):
         ttk.Label(f_ref, text="Option A: Ref Volume (L)").pack(anchor="w")
         self.ent_flow_ref = ttk.Entry(f_ref)
         self.ent_flow_ref.pack(fill="x", pady=(0, 10))
+        self.bind_touch_numpad(self.ent_flow_ref, "Ref Volume")  # <--- BINDING
+
         ttk.Label(f_ref, text="Option B: Ref Flow Rate (L/h)").pack(anchor="w")
         self.ent_flow_rate_ref = ttk.Entry(f_ref)
         self.ent_flow_rate_ref.pack(fill="x", pady=(0, 15))
+        self.bind_touch_numpad(self.ent_flow_rate_ref, "Ref Flow Rate")  # <--- BINDING
 
         self.btn_flow_save = ttk.Button(
             f_ref,
