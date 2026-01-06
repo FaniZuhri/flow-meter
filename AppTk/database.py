@@ -272,3 +272,29 @@ class DatabaseManager:
             print(f"[DB Error] Insert Log: {e}")
         finally:
             conn.close()
+
+    def get_all_test_logs(self):
+        """Fetches all test logs, ordered by newest first."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM test_logs ORDER BY id DESC")
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"[DB Error] Get Logs: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def delete_test_log(self, log_id):
+        """Deletes a specific log entry by ID."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM test_logs WHERE id = ?", (log_id,))
+            conn.commit()
+        except Exception as e:
+            print(f"[DB Error] Delete Log: {e}")
+        finally:
+            conn.close()
+
