@@ -1,56 +1,55 @@
 import tkinter as tk
 from tkinter import ttk
+from typing import List, Tuple, Callable
 
 
+## @class TouchNumpad
+#  @brief Modal numeric keypad for touchscreens.
 class TouchNumpad(tk.Toplevel):
-    def __init__(self, parent, target_widget, title="Input"):
+    def __init__(self, parent: tk.Tk, target: ttk.Entry, title: str = "Input") -> None:
         super().__init__(parent)
-        self.target_widget = target_widget
+        self.target_widget: ttk.Entry = target
         self.title(title)
 
-        # Window Configuration
         self.geometry("300x400")
         self.resizable(False, False)
-        self.transient(parent)  # Keep on top of parent
-        self.grab_set()  # Modal (disable main window interactions)
+        self.transient(parent)
+        self.grab_set()
 
-        # Center the keypad relative to parent
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - 150
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - 200
-        self.geometry(f"+{x}+{y}")
+        # Center window
+        if parent.winfo_viewable():
+            x: int = parent.winfo_x() + (parent.winfo_width() // 2) - 150
+            y: int = parent.winfo_y() + (parent.winfo_height() // 2) - 200
+            self.geometry(f"+{x}+{y}")
 
-        # Internal buffer
-        self.current_text = tk.StringVar(value=target_widget.get())
+        self.val_buffer: tk.StringVar = tk.StringVar(value=target.get())
+        self._setup_layout()
 
-        self._build_ui()
+    def _setup_layout(self) -> None:
+        # Display
+        disp_f: ttk.Frame = ttk.Frame(self, padding=10)
+        disp_f.pack(fill="x")
 
-    def _build_ui(self):
-        # Display Area
-        disp_frame = ttk.Frame(self, padding=10)
-        disp_frame.pack(fill="x")
-
-        lbl_display = ttk.Label(
-            disp_frame,
-            textvariable=self.current_text,
+        lbl: ttk.Label = ttk.Label(
+            disp_f,
+            textvariable=self.val_buffer,
             font=("Consolas", 24, "bold"),
             anchor="e",
             background="white",
             relief="sunken",
         )
-        lbl_display.pack(fill="x", ipady=10)
+        lbl.pack(fill="x", ipady=10)
 
-        # Buttons Frame
-        btn_frame = ttk.Frame(self, padding=5)
-        btn_frame.pack(fill="both", expand=True)
+        # Buttons
+        pad_f: ttk.Frame = ttk.Frame(self, padding=5)
+        pad_f.pack(fill="both", expand=True)
 
-        # Grid Configuration
         for i in range(4):
-            btn_frame.columnconfigure(i, weight=1)
+            pad_f.columnconfigure(i, weight=1)
         for i in range(4):
-            btn_frame.rowconfigure(i, weight=1)
+            pad_f.rowconfigure(i, weight=1)
 
-        # Button Layout
-        keys = [
+        keys: List[Tuple[str, int, int]] = [
             ("7", 0, 0),
             ("8", 0, 1),
             ("9", 0, 2),
@@ -68,52 +67,35 @@ class TouchNumpad(tk.Toplevel):
             ("OK", 3, 2),
         ]
 
-        style = ttk.Style()
-        style.configure("Numpad.TButton", font=("Segoe UI", 14, "bold"), padding=10)
-        style.configure(
-            "Action.TButton",
-            font=("Segoe UI", 12, "bold"),
-            background="#007BFF",
-            foreground="black",
-        )
+        s: ttk.Style = ttk.Style()
+        s.configure("Num.TButton", font=("Segoe UI", 14, "bold"), padding=10)
 
-        for text, row, col in keys:
-            # Span logic for OK button
-            colspan = 2 if text == "OK" else 1
-
-            # Styling logic
-            s = "Numpad.TButton"
-            cmd = lambda t=text: self._on_key(t)
-
-            btn = ttk.Button(btn_frame, text=text, style=s, command=cmd)
-            btn.grid(
-                row=row, column=col, columnspan=colspan, sticky="nsew", padx=2, pady=2
+        for txt, r, c in keys:
+            sp: int = 2 if txt == "OK" else 1
+            cmd: Callable = lambda t=txt: self._handle_press(t)
+            btn: ttk.Button = ttk.Button(
+                pad_f, text=txt, style="Num.TButton", command=cmd
             )
+            btn.grid(row=r, column=c, columnspan=sp, sticky="nsew", padx=2, pady=2)
 
-    def _on_key(self, key):
-        val = self.current_text.get()
+    def _handle_press(self, key: str) -> None:
+        curr: str = self.val_buffer.get()
 
         if key == "OK":
-            # Save to target widget and close
             self.target_widget.delete(0, tk.END)
-            self.target_widget.insert(0, val)
+            self.target_widget.insert(0, curr)
             self.destroy()
-
         elif key == "ESC":
             self.destroy()
-
         elif key == "CLR":
-            self.current_text.set("")
-
+            self.val_buffer.set("")
         elif key == "BS":
-            self.current_text.set(val[:-1])
-
+            self.val_buffer.set(curr[:-1])
         elif key == ".":
-            if "." not in val:
-                self.current_text.set(val + ".")
-
-        else:  # Numbers
-            if val == "0" and key != ".":  # Prevent 01, 05 etc
-                self.current_text.set(key)
+            if "." not in curr:
+                self.val_buffer.set(curr + ".")
+        else:
+            if curr == "0" and key != ".":
+                self.val_buffer.set(key)
             else:
-                self.current_text.set(val + key)
+                self.val_buffer.set(curr + key)

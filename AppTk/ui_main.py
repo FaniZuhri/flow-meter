@@ -3,745 +3,627 @@ from tkinter import ttk, messagebox
 import os
 import queue
 import math
+from typing import Dict, Any, Optional, Tuple
 
-# Imports from other files
-from controller import MeasurementEngine
-from ui_styles import apply_theme
+from controller import WMTKController
+from ui_styles import apply_app_theme
 from ui_numpad import TouchNumpad
 
 
+## @class WaterMeterAppTk
+#  @brief Main Application Window (View).
 class WaterMeterAppTk(tk.Tk):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-        # --- Window ---
         self.title("Portable WMTK Proto")
         self.geometry("800x480")
         self.resizable(False, False)
 
-        # --- Initialize Engine ---
-        self.engine = MeasurementEngine()
+        self.ctrl: WMTKController = WMTKController()
 
-        # --- Setup UI ---
-        apply_theme(self)
+        apply_app_theme(self)
+        self.logo_icon: Optional[tk.PhotoImage] = None
+        self._init_assets()
 
-        self.logo_img = None
-        self._load_assets()
-
-        self._build_ui()
+        self._init_ui()
         self._init_logic()
 
-        # --- Start Loops ---
-        self.after(100, self._process_serial_queues)
-        self.after(500, self._poll_sensor_routine)
+        self.after(100, self._loop_serial)
+        self.after(500, self._loop_sensor)
 
-    def _load_assets(self):
-        """Loads and stretches logo."""
-        logo_path = os.path.join("assets", "logo.png")
-        if os.path.exists(logo_path):
+    def _init_assets(self) -> None:
+        path: str = os.path.join("assets", "logo.png")
+        if os.path.exists(path):
             try:
-                src_img = tk.PhotoImage(file=logo_path)
-                TARGET_WIDTH = 100
-                orig_w = src_img.width()
-                common_divisor = math.gcd(TARGET_WIDTH, orig_w)
-                zoom_factor = TARGET_WIDTH // common_divisor
-                subsample_factor = orig_w // common_divisor
+                src: tk.PhotoImage = tk.PhotoImage(file=path)
+                tgt_w: int = 100
+                orig_w: int = src.width()
 
-                if zoom_factor > 10:
-                    simple_factor = int(orig_w / TARGET_WIDTH) or 1
-                    self.logo_img = src_img.subsample(simple_factor)
+                # Rational Scaling: Width 100px
+                div: int = math.gcd(tgt_w, orig_w)
+                zoom: int = tgt_w // div
+                sub: int = orig_w // div
+
+                if zoom > 10:
+                    sf: int = int(orig_w / tgt_w) or 1
+                    self.logo_icon = src.subsample(sf)
                 else:
-                    self.logo_img = src_img.zoom(zoom_factor).subsample(
-                        subsample_factor
-                    )
+                    self.logo_icon = src.zoom(zoom).subsample(sub)
 
-                self.iconphoto(False, self.logo_img)
+                self.iconphoto(False, self.logo_icon)
             except Exception as e:
-                print(f"Error loading logo: {e}")
+                print(f"[UI] Logo Error: {e}")
 
-    def _build_ui(self):
-        main_container = ttk.Frame(self)
-        main_container.pack(fill="both", expand=True)
+    # --- UI Building ---
+    def _init_ui(self) -> None:
+        self.container: ttk.Frame = ttk.Frame(self)
+        self.container.pack(fill="both", expand=True)
 
         # Sidebar
-        sidebar = ttk.Frame(main_container, style="Sidebar.TFrame", width=160)
-        sidebar.pack(side="left", fill="y")
-        sidebar.pack_propagate(False)
+        self.sb: ttk.Frame = ttk.Frame(
+            self.container, style="Sidebar.TFrame", width=160
+        )
+        self.sb.pack(side="left", fill="y")
+        self.sb.pack_propagate(False)
 
-        f_header = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        f_header.pack(pady=(10, 5))
+        # Header (Logo + Title)
+        hdr: ttk.Frame = ttk.Frame(self.sb, style="Sidebar.TFrame")
+        hdr.pack(pady=(10, 5))
 
-        if self.logo_img:
-            ttk.Label(f_header, image=self.logo_img, style="Sidebar.TLabel").pack(
+        if self.logo_icon:
+            ttk.Label(hdr, image=self.logo_icon, style="Sidebar.TLabel").pack(
                 side="top", pady=(0, 5)
             )
 
         ttk.Label(
-            f_header,
+            hdr,
             text="WMTK Proto",
             style="Sidebar.TLabel",
             font=("Segoe UI", 12, "bold"),
             justify="center",
         ).pack(side="top")
 
-        f_nav = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        f_nav.pack(fill="x", pady=5)
+        # Nav
+        nav_f: ttk.Frame = ttk.Frame(self.sb, style="Sidebar.TFrame")
+        nav_f.pack(fill="x", pady=5)
 
-        navs = [
+        menu = [
             ("Test Mode", "test"),
-            ("History Logs", "history"),
+            ("History", "history"),
             ("Temp Calib", "temp"),
             ("Press Calib", "press"),
             ("Flow Calib", "flow"),
         ]
 
-        for lbl, page in navs:
+        for txt, key in menu:
             ttk.Button(
-                f_nav,
-                text=lbl,
+                nav_f,
+                text=txt,
                 style="Nav.TButton",
-                command=lambda p=page: self.show_page(p),
+                command=lambda k=key: self.show_page(k),
             ).pack(fill="x", pady=1)
 
-        ttk.Frame(sidebar, style="Sidebar.TFrame").pack(fill="both", expand=True)
+        ttk.Frame(self.sb, style="Sidebar.TFrame").pack(fill="both", expand=True)
 
-        conn_frame = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        conn_frame.pack(side="bottom", fill="x", padx=10, pady=10)
-
+        # Connection
+        conn: ttk.Frame = ttk.Frame(self.sb, style="Sidebar.TFrame")
+        conn.pack(side="bottom", fill="x", padx=10, pady=10)
         ttk.Label(
-            conn_frame,
-            text="Serial Port:",
-            style="Sidebar.TLabel",
-            font=("Segoe UI", 8),
+            conn, text="Port:", style="Sidebar.TLabel", font=("Segoe UI", 8)
         ).pack(anchor="w")
-        self.cmb_port = ttk.Combobox(conn_frame, state="readonly", height=4)
-        self.cmb_port.pack(fill="x", pady=(0, 5))
-
-        self.btn_connect = ttk.Button(
-            conn_frame,
-            text="Connect",
-            style="Primary.TButton",
-            command=self.toggle_connection,
+        self.cmb_p: ttk.Combobox = ttk.Combobox(conn, state="readonly", height=4)
+        self.cmb_p.pack(fill="x", pady=(0, 5))
+        self.btn_conn: ttk.Button = ttk.Button(
+            conn, text="Connect", style="Primary.TButton", command=self.do_connect
         )
-        self.btn_connect.pack(fill="x")
-        self.lbl_status = ttk.Label(
-            conn_frame,
+        self.btn_conn.pack(fill="x")
+        self.lbl_stat: ttk.Label = ttk.Label(
+            conn,
             text="Disconnected",
             style="Sidebar.TLabel",
             font=("Segoe UI", 8),
             foreground="red",
         )
-        self.lbl_status.pack(pady=(2, 0))
+        self.lbl_stat.pack(pady=(2, 0))
 
-        # Content Area
-        self.content_area = ttk.Frame(main_container, padding=20)
-        self.content_area.pack(side="left", fill="both", expand=True)
+        # Body
+        self.body: ttk.Frame = ttk.Frame(self.container, padding=20)
+        self.body.pack(side="left", fill="both", expand=True)
 
-        self.pages = {}
-        self._create_test_page()
-        self._create_history_page()
-        self._create_temp_page()
-        self._create_press_page()
-        self._create_flow_page()
+        self.pages: Dict[str, ttk.Frame] = {}
+        self._build_pg_test()
+        self._build_pg_history()
+        self._build_pg_calib_generic("temp", "Temperature", "TEMP", "°C")
+        self._build_pg_calib_generic("press", "Pressure", "PRESS", "Bar")
+        self._build_pg_calib_flow()
+
         self.show_page("test")
 
-    # --- TOUCH INPUT HELPER ---
-    def bind_touch_numpad(self, widget, title="Input"):
-        """Binds click event to open the custom numpad."""
-        widget.bind("<Button-1>", lambda e: self._open_numpad(widget, title))
-
-    def _open_numpad(self, widget, title):
-        TouchNumpad(self, widget, title)
-        # Return 'break' to prevent default focus behavior if necessary
-        return "break"
-
-    # --- PAGES ---
-
-    def _create_test_page(self):
-        p = ttk.Frame(self.content_area)
+    def _build_pg_test(self) -> None:
+        p: ttk.Frame = ttk.Frame(self.body)
         self.pages["test"] = p
         ttk.Label(p, text="Automated Test", style="Header.TLabel").pack(
             anchor="w", pady=(0, 10)
         )
 
-        f_cards = ttk.Frame(p)
-        f_cards.pack(fill="x", pady=0)
-        self.lbl_flow_val = self._make_card(f_cards, "Flow Rate (L/h)", "#007BFF")
-        self.lbl_press_val = self._make_card(f_cards, "Pressure (Bar)", "#28A745")
-        self.lbl_temp_val = self._make_card(f_cards, "Temp (°C)", "#DC3545")
+        # Cards
+        c_frm: ttk.Frame = ttk.Frame(p)
+        c_frm.pack(fill="x")
+        self.card_flow: ttk.Label = self._mk_card(c_frm, "Flow (L/h)", "#007BFF")
+        self.card_pres: ttk.Label = self._mk_card(c_frm, "Pressure (Bar)", "#28A745")
+        self.card_temp: ttk.Label = self._mk_card(c_frm, "Temp (°C)", "#DC3545")
 
-        f_form = ttk.Labelframe(p, text="Test Parameters", padding=15)
-        f_form.pack(fill="x", pady=15)
+        # Inputs
+        f_frm: ttk.Labelframe = ttk.Labelframe(p, text="Parameters", padding=15)
+        f_frm.pack(fill="x", pady=15)
 
-        f_row1 = ttk.Frame(f_form)
-        f_row1.pack(fill="x", anchor="w", pady=(0, 10))
+        # Row 1
+        r1: ttk.Frame = ttk.Frame(f_frm)
+        r1.pack(fill="x", pady=(0, 10))
+        ttk.Label(r1, text="1. Target (L):", font=("Segoe UI", 10, "bold")).pack(
+            side="left"
+        )
+        self.ent_tgt: ttk.Entry = ttk.Entry(r1, width=12)
+        self.ent_tgt.pack(side="left", padx=(5, 25))
+        self._bind_numpad(self.ent_tgt, "Target Vol")
+
+        ttk.Label(r1, text="2. Init (m³):").pack(side="left")
+        self.ent_ini: ttk.Entry = ttk.Entry(r1, width=12)
+        self.ent_ini.pack(side="left", padx=(5, 0))
+        self._bind_numpad(self.ent_ini, "Initial Meter")
+
+        ttk.Separator(f_frm, orient="horizontal").pack(fill="x", pady=(0, 10))
+
+        # Row 2
+        r2: ttk.Frame = ttk.Frame(f_frm)
+        r2.pack(fill="x")
+        ttk.Label(r2, text="3. Final (m³):").pack(side="left")
+        self.ent_fin: ttk.Entry = ttk.Entry(r2, width=12)
+        self.ent_fin.pack(side="left", padx=(5, 10))
+        self._bind_numpad(self.ent_fin, "Final Meter")
         ttk.Label(
-            f_row1, text="1. Target Volume (L):", font=("Segoe UI", 10, "bold")
-        ).pack(side="left")
-        self.ent_test_vol = ttk.Entry(f_row1, width=12)
-        self.ent_test_vol.pack(side="left", padx=(5, 25))
-        self.bind_touch_numpad(self.ent_test_vol, "Target Volume")  # <--- BINDING
-
-        ttk.Label(f_row1, text="2. Init Meter (m³):").pack(side="left")
-        self.ent_test_init = ttk.Entry(f_row1, width=12)
-        self.ent_test_init.pack(side="left", padx=(5, 0))
-        self.bind_touch_numpad(self.ent_test_init, "Initial Meter")  # <--- BINDING
-
-        ttk.Separator(f_form, orient="horizontal").pack(fill="x", pady=(0, 10))
-
-        f_row2 = ttk.Frame(f_form)
-        f_row2.pack(fill="x", anchor="w")
-        ttk.Label(f_row2, text="3. Final Meter (m³):").pack(side="left")
-        self.ent_test_final = ttk.Entry(f_row2, width=12)
-        self.ent_test_final.pack(side="left", padx=(5, 10))
-        self.bind_touch_numpad(self.ent_test_final, "Final Meter")  # <--- BINDING
-
-        ttk.Label(
-            f_row2,
-            text="(Input after test finishes)",
+            r2,
+            text="(Post-test input)",
             foreground="gray",
             font=("Segoe UI", 9, "italic"),
         ).pack(side="left")
 
-        f_actions = ttk.Frame(p)
-        f_actions.pack(fill="x", pady=5)
-        self.btn_test_start = ttk.Button(
-            f_actions,
-            text="Start Test",
-            style="Primary.TButton",
-            command=self.handle_test_button,
+        # Buttons
+        act_f: ttk.Frame = ttk.Frame(p)
+        act_f.pack(fill="x", pady=5)
+        self.btn_t_start: ttk.Button = ttk.Button(
+            act_f, text="Start", style="Primary.TButton", command=self.act_test_start
         )
-        self.btn_test_start.pack(side="left", padx=(5, 0))
-        self.btn_test_finish = ttk.Button(
-            f_actions,
+        self.btn_t_start.pack(side="left", padx=(5, 0))
+        self.btn_t_save: ttk.Button = ttk.Button(
+            act_f,
             text="Finish & Save",
             style="Primary.TButton",
             state="disabled",
-            command=self.save_test_result,
+            command=self.act_test_save,
         )
-        self.btn_test_finish.pack(side="left", padx=5)
+        self.btn_t_save.pack(side="left", padx=5)
         ttk.Button(
-            f_actions, text="Reset", style="Danger.TButton", command=self.reset_test_ui
+            act_f, text="Reset", style="Danger.TButton", command=self.act_test_reset
         ).pack(side="right", padx=5)
 
-        self.pb_test = ttk.Progressbar(
+        # Progress
+        self.prog_bar: ttk.Progressbar = ttk.Progressbar(
             p, style="Horizontal.TProgressbar", orient="horizontal", mode="determinate"
         )
-        self.pb_test.pack(fill="x", pady=(10, 5), padx=5)
-        self.lbl_test_progress = ttk.Label(
+        self.prog_bar.pack(fill="x", pady=(10, 5), padx=5)
+        self.lbl_prog: ttk.Label = ttk.Label(
             p, text="0.00 / 0.00 L", font=("Segoe UI", 10, "bold"), foreground="#6c757d"
         )
-        self.lbl_test_progress.pack(pady=(0, 10))
+        self.lbl_prog.pack(pady=(0, 10))
 
-    def _create_history_page(self):
-        p = ttk.Frame(self.content_area)
+    def _build_pg_history(self) -> None:
+        p: ttk.Frame = ttk.Frame(self.body)
         self.pages["history"] = p
 
-        f_top = ttk.Frame(p)
-        f_top.pack(fill="x", pady=(0, 10))
-        ttk.Label(f_top, text="Test History Logs", style="Header.TLabel").pack(
-            side="left"
-        )
-
+        tf: ttk.Frame = ttk.Frame(p)
+        tf.pack(fill="x", pady=(0, 10))
+        ttk.Label(tf, text="Logs", style="Header.TLabel").pack(side="left")
         ttk.Button(
-            f_top,
-            text="Delete Selected",
-            style="Danger.TButton",
-            command=self.delete_selected_log,
+            tf, text="Del Selected", style="Danger.TButton", command=self.act_hist_del
         ).pack(side="right", padx=5)
         ttk.Button(
-            f_top, text="Refresh", style="Primary.TButton", command=self.refresh_history
+            tf, text="Refresh", style="Primary.TButton", command=self.act_hist_ref
         ).pack(side="right", padx=5)
 
-        columns = (
+        cols: Tuple[str, ...] = (
             "id",
-            "date",
-            "target",
-            "init",
-            "final",
-            "measured",
-            "actual",
-            "error",
-            "status",
+            "ts",
+            "tgt",
+            "ini",
+            "fin",
+            "meas",
+            "real",
+            "err",
+            "stat",
         )
-        self.tree_hist = ttk.Treeview(
-            p, columns=columns, show="headings", selectmode="extended"
+        self.tree: ttk.Treeview = ttk.Treeview(
+            p, columns=cols, show="headings", selectmode="extended"
         )
 
-        headers = {
-            "id": "ID",
-            "date": "Timestamp",
-            "target": "Target(L)",
-            "init": "Init(m3)",
-            "final": "Final(m3)",
-            "measured": "Meter(L)",
-            "actual": "Real(L)",
-            "error": "Error(%)",
-            "status": "Status",
+        hdrs = {
+            "id": ("ID", 40),
+            "ts": ("Date", 140),
+            "tgt": ("Tgt(L)", 60),
+            "ini": ("Ini", 60),
+            "fin": ("Fin", 60),
+            "meas": ("Meter(L)", 70),
+            "real": ("Real(L)", 70),
+            "err": ("Err(%)", 60),
+            "stat": ("Stat", 70),
         }
-        widths = {
-            "id": 40,
-            "date": 140,
-            "target": 70,
-            "init": 70,
-            "final": 70,
-            "measured": 80,
-            "actual": 80,
-            "error": 70,
-            "status": 80,
-        }
+        for c, (t, w) in hdrs.items():
+            self.tree.heading(c, text=t)
+            self.tree.column(c, width=w, anchor="center")
 
-        for col, text in headers.items():
-            self.tree_hist.heading(col, text=text)
-            self.tree_hist.column(col, width=widths[col], anchor="center")
-
-        sb = ttk.Scrollbar(p, orient="vertical", command=self.tree_hist.yview)
-        self.tree_hist.configure(yscroll=sb.set)
-
-        self.tree_hist.pack(side="left", fill="both", expand=True)
+        sb: ttk.Scrollbar = ttk.Scrollbar(p, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=sb.set)
+        self.tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
 
-    def _make_card(self, parent, title, color):
-        card = ttk.Frame(parent, style="Card.TFrame", padding=10)
-        card.pack(side="left", fill="x", expand=True, padx=5)
-        ttk.Label(
-            card, text=title, font=("Segoe UI", 9, "bold"), foreground="gray"
-        ).pack(anchor="w")
-        lbl = ttk.Label(
-            card, text="0.00", font=("Consolas", 18, "bold"), foreground=color
-        )
-        lbl.pack(anchor="w")
-        return lbl
+    def _build_pg_calib_generic(
+        self, key: str, title: str, stype: str, unit: str
+    ) -> None:
+        p: ttk.Frame = ttk.Frame(self.body)
+        self.pages[key] = p
+        ttk.Label(p, text=title, style="Header.TLabel").pack(anchor="w", pady=(0, 15))
 
-    def _create_temp_page(self):
-        p = ttk.Frame(self.content_area)
-        self.pages["temp"] = p
-        self._create_generic_cal_page(
-            p,
-            "Temperature Calibration",
-            "TEMP",
-            "°C",
-            self.save_generic_cal,
-            self.delete_calibration,
-            "lbl_temp_live_cal",
-            "ent_temp_ref",
-        )
+        hf: ttk.Frame = ttk.Frame(p)
+        hf.pack(fill="x", pady=5)
+        cmb: ttk.Combobox = ttk.Combobox(hf, state="readonly", width=30)
+        cmb.pack(side="left", padx=(0, 5))
+        l_ref: ttk.Label = ttk.Label(hf, text="Ref: -")
+        l_ref.pack(side="left", padx=10)
+        l_gain: ttk.Label = ttk.Label(hf, text="Gain: -")
+        l_gain.pack(side="left", padx=10)
 
-    def _create_press_page(self):
-        p = ttk.Frame(self.content_area)
-        self.pages["press"] = p
-        self._create_generic_cal_page(
-            p,
-            "Pressure Calibration",
-            "PRESS",
-            "Bar",
-            self.save_generic_cal,
-            self.delete_calibration,
-            "lbl_press_live_cal",
-            "ent_press_ref",
-        )
-
-    def _create_generic_cal_page(
-        self,
-        parent,
-        title,
-        sens_type,
-        unit,
-        save_cb,
-        del_cb,
-        live_lbl_attr,
-        ref_ent_attr,
-    ):
-        ttk.Label(parent, text=title, style="Header.TLabel").pack(
-            anchor="w", pady=(0, 15)
-        )
-
-        f_hist = ttk.Frame(parent)
-        f_hist.pack(fill="x", pady=5)
-        combo = ttk.Combobox(f_hist, state="readonly", width=35)
-        combo.pack(side="left", padx=(0, 5))
-        lbl_ref = ttk.Label(f_hist, text="Ref: -")
-        lbl_ref.pack(side="left", padx=10)
-        lbl_gain = ttk.Label(f_hist, text="Gain: -")
-        lbl_gain.pack(side="left", padx=10)
-
-        attr_map = {"TEMP": "cmb_cal_temp", "PRESS": "cmb_cal_press"}
-        setattr(self, attr_map[sens_type], combo)
-
-        self.cal_widgets = getattr(self, "cal_widgets", {})
-        self.cal_widgets[sens_type] = {"combo": combo, "ref": lbl_ref, "gain": lbl_gain}
-
-        combo.bind(
-            "<<ComboboxSelected>>", lambda e, st=sens_type: self.load_cal_details(st)
-        )
+        self.refs_cal = getattr(self, "refs_cal", {})
+        self.refs_cal[stype] = {"c": cmb, "lr": l_ref, "lg": l_gain}
+        cmb.bind("<<ComboboxSelected>>", lambda e, s=stype: self.act_cal_sel(s))
         ttk.Button(
-            f_hist,
+            hf,
             text="Delete",
             style="Danger.TButton",
-            command=lambda st=sens_type: del_cb(st),
+            command=lambda s=stype: self.act_cal_del(s),
         ).pack(side="right")
 
-        f_cal = ttk.Labelframe(parent, text="New Calibration Point", padding=20)
-        f_cal.pack(fill="x", pady=20)
-        f_cal.columnconfigure(1, weight=1)
+        frm: ttk.Labelframe = ttk.Labelframe(p, text="New Point", padding=20)
+        frm.pack(fill="x", pady=20)
+        frm.columnconfigure(1, weight=1)
 
-        ttk.Label(f_cal, text=f"Live Sensor Value ({unit}):").grid(
-            row=0, column=0, sticky="e", padx=5, pady=5
+        ttk.Label(frm, text=f"Sensor ({unit}):").grid(
+            row=0, column=0, sticky="e", padx=5
         )
-        lbl_live = ttk.Label(f_cal, text="0.00", font=("Consolas", 14, "bold"))
-        lbl_live.grid(row=0, column=1, sticky="w", padx=5, pady=5)
-        setattr(self, live_lbl_attr, lbl_live)
+        l_liv: ttk.Label = ttk.Label(frm, text="0.00", font=("Consolas", 14, "bold"))
+        l_liv.grid(row=0, column=1, sticky="w", padx=5)
+        setattr(self, f"lbl_live_{key}", l_liv)
 
-        ttk.Label(f_cal, text=f"Actual Reference ({unit}):").grid(
-            row=1, column=0, sticky="e", padx=5, pady=5
+        ttk.Label(frm, text=f"Reference ({unit}):").grid(
+            row=1, column=0, sticky="e", padx=5
         )
-        ent_ref = ttk.Entry(f_cal, width=15)
-        ent_ref.grid(row=1, column=1, sticky="w", padx=5, pady=5)
-        setattr(self, ref_ent_attr, ent_ref)
-        self.bind_touch_numpad(ent_ref, f"Ref {unit}")  # <--- BINDING
+        e_ref: ttk.Entry = ttk.Entry(frm, width=15)
+        e_ref.grid(row=1, column=1, sticky="w", padx=5)
+        self._bind_numpad(e_ref, f"Ref {unit}")
+        setattr(self, f"ent_ref_{key}", e_ref)
 
         ttk.Button(
-            f_cal,
-            text="Save Calibration Point",
+            frm,
+            text="Save",
             style="Primary.TButton",
-            command=lambda st=sens_type: save_cb(st),
+            command=lambda s=stype, k=key: self.act_cal_save(s, k),
         ).grid(row=2, column=1, sticky="w", pady=15)
 
-    def _create_flow_page(self):
-        p = ttk.Frame(self.content_area)
+    def _build_pg_calib_flow(self) -> None:
+        p: ttk.Frame = ttk.Frame(self.body)
         self.pages["flow"] = p
-        ttk.Label(p, text="Flow Sensor Calibration", style="Header.TLabel").pack(
+        ttk.Label(p, text="Flow Calibration", style="Header.TLabel").pack(
             anchor="w", pady=(0, 15)
         )
 
-        f_hist = ttk.Frame(p)
-        f_hist.pack(fill="x", pady=5)
-        self.cmb_cal_flow = ttk.Combobox(f_hist, state="readonly", width=30)
-        self.cmb_cal_flow.pack(side="left", padx=(0, 5))
-        self.lbl_flow_cal_ref = ttk.Label(f_hist, text="Ref: -")
-        self.lbl_flow_cal_ref.pack(side="left", padx=5)
-        self.lbl_flow_cal_gain = ttk.Label(f_hist, text="Gain: -")
-        self.lbl_flow_cal_gain.pack(side="left", padx=5)
+        hf: ttk.Frame = ttk.Frame(p)
+        hf.pack(fill="x", pady=5)
+        cmb: ttk.Combobox = ttk.Combobox(hf, state="readonly", width=30)
+        cmb.pack(side="left", padx=(0, 5))
+        lr: ttk.Label = ttk.Label(hf, text="Ref: -")
+        lr.pack(side="left", padx=5)
+        lg: ttk.Label = ttk.Label(hf, text="Gain: -")
+        lg.pack(side="left", padx=5)
 
-        self.cal_widgets = getattr(self, "cal_widgets", {})
-        self.cal_widgets["FLOW"] = {
-            "combo": self.cmb_cal_flow,
-            "ref": self.lbl_flow_cal_ref,
-            "gain": self.lbl_flow_cal_gain,
-        }
-        self.cmb_cal_flow.bind(
-            "<<ComboboxSelected>>", lambda e: self.load_cal_details("FLOW")
-        )
+        self.refs_cal = getattr(self, "refs_cal", {})
+        self.refs_cal["FLOW"] = {"c": cmb, "lr": lr, "lg": lg}
+        cmb.bind("<<ComboboxSelected>>", lambda e: self.act_cal_sel("FLOW"))
         ttk.Button(
-            f_hist,
+            hf,
             text="Delete",
             style="Danger.TButton",
-            command=lambda: self.delete_calibration("FLOW"),
+            command=lambda: self.act_cal_del("FLOW"),
         ).pack(side="right")
 
-        f_main = ttk.Frame(p)
-        f_main.pack(fill="both", expand=True, pady=10)
+        mf: ttk.Frame = ttk.Frame(p)
+        mf.pack(fill="both", expand=True, pady=10)
 
-        f_ctrl = ttk.Labelframe(f_main, text="1. Capture Data", padding=15)
-        f_ctrl.pack(side="left", fill="both", expand=True, padx=(0, 5))
-        self.btn_flow_cal_start = ttk.Button(
-            f_ctrl,
-            text="Start Flow",
-            style="Primary.TButton",
-            command=self.start_flow_cal,
+        # Left: Cap
+        cf: ttk.Labelframe = ttk.Labelframe(mf, text="1. Capture", padding=15)
+        cf.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        self.btn_f_start: ttk.Button = ttk.Button(
+            cf, text="Start Flow", style="Primary.TButton", command=self.act_f_start
         )
-        self.btn_flow_cal_start.pack(fill="x", pady=5)
-        self.btn_flow_cal_stop = ttk.Button(
-            f_ctrl, text="Stop Flow", style="Danger.TButton", command=self.stop_flow_cal
+        self.btn_f_start.pack(fill="x", pady=5)
+        self.btn_f_stop: ttk.Button = ttk.Button(
+            cf, text="Stop Flow", style="Danger.TButton", command=self.act_f_stop
         )
-        self.btn_flow_cal_stop.pack(fill="x", pady=5)
-
-        ttk.Label(f_ctrl, text="Captured Raw Volume:").pack(anchor="w", pady=(15, 0))
-        self.lbl_flow_raw_vol = ttk.Label(
-            f_ctrl, text="0.00", font=("Consolas", 14, "bold"), foreground="gray"
+        self.btn_f_stop.pack(fill="x", pady=5)
+        ttk.Label(cf, text="Raw Vol:").pack(anchor="w", pady=(15, 0))
+        self.l_f_rv: ttk.Label = ttk.Label(
+            cf, text="0.00", font=("Consolas", 14, "bold"), foreground="gray"
         )
-        self.lbl_flow_raw_vol.pack(anchor="w")
-        ttk.Label(f_ctrl, text="Captured Avg Flow:").pack(anchor="w", pady=(5, 0))
-        self.lbl_flow_avg_rate = ttk.Label(
-            f_ctrl, text="0.00", font=("Consolas", 14, "bold"), foreground="#007BFF"
+        self.l_f_rv.pack(anchor="w")
+        ttk.Label(cf, text="Avg Flow:").pack(anchor="w", pady=(5, 0))
+        self.l_f_ra: ttk.Label = ttk.Label(
+            cf, text="0.00", font=("Consolas", 14, "bold"), foreground="#007BFF"
         )
-        self.lbl_flow_avg_rate.pack(anchor="w")
+        self.l_f_ra.pack(anchor="w")
 
-        f_ref = ttk.Labelframe(f_main, text="2. Set Reference", padding=15)
-        f_ref.pack(side="left", fill="both", expand=True, padx=(5, 0))
-        ttk.Label(f_ref, text="Option A: Ref Volume (L)").pack(anchor="w")
-        self.ent_flow_ref = ttk.Entry(f_ref)
-        self.ent_flow_ref.pack(fill="x", pady=(0, 10))
-        self.bind_touch_numpad(self.ent_flow_ref, "Ref Volume")  # <--- BINDING
-
-        ttk.Label(f_ref, text="Option B: Ref Flow Rate (L/h)").pack(anchor="w")
-        self.ent_flow_rate_ref = ttk.Entry(f_ref)
-        self.ent_flow_rate_ref.pack(fill="x", pady=(0, 15))
-        self.bind_touch_numpad(self.ent_flow_rate_ref, "Ref Flow Rate")  # <--- BINDING
-
-        self.btn_flow_save = ttk.Button(
-            f_ref,
-            text="Calculate & Save",
+        # Right: Ref
+        rf: ttk.Labelframe = ttk.Labelframe(mf, text="2. Reference", padding=15)
+        rf.pack(side="left", fill="both", expand=True, padx=(5, 0))
+        ttk.Label(rf, text="A: Volume (L)").pack(anchor="w")
+        self.e_f_rv: ttk.Entry = ttk.Entry(rf)
+        self.e_f_rv.pack(fill="x", pady=(0, 10))
+        self._bind_numpad(self.e_f_rv, "Ref Vol")
+        ttk.Label(rf, text="B: Rate (L/h)").pack(anchor="w")
+        self.e_f_rr: ttk.Entry = ttk.Entry(rf)
+        self.e_f_rr.pack(fill="x", pady=(0, 15))
+        self._bind_numpad(self.e_f_rr, "Ref Rate")
+        self.btn_f_save: ttk.Button = ttk.Button(
+            rf,
+            text="Calc & Save",
             style="Primary.TButton",
             state="disabled",
-            command=self.save_flow_calibration,
+            command=self.act_f_save,
         )
-        self.btn_flow_save.pack(fill="x", side="bottom")
+        self.btn_f_save.pack(fill="x", side="bottom")
 
-    def show_page(self, page_name):
-        for name, frame in self.pages.items():
-            if name == page_name:
-                frame.pack(fill="both", expand=True)
-                if name in ["temp", "press", "flow"]:
-                    self.refresh_cal_combo(name.upper())
-                if name == "history":
-                    self.refresh_history()
+    # --- Helpers ---
+    def _mk_card(self, p: ttk.Frame, t: str, c: str) -> ttk.Label:
+        frm = ttk.Frame(p, style="Card.TFrame", padding=10)
+        frm.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Label(frm, text=t, font=("Segoe UI", 9, "bold"), foreground="gray").pack(
+            anchor="w"
+        )
+        l = ttk.Label(frm, text="0.00", font=("Consolas", 18, "bold"), foreground=c)
+        l.pack(anchor="w")
+        return l
+
+    def _bind_numpad(self, w: ttk.Entry, t: str) -> None:
+        w.bind("<Button-1>", lambda e: self._show_numpad(w, t))
+
+    def _show_numpad(self, w: ttk.Entry, t: str) -> str:
+        TouchNumpad(self, w, t)
+        return "break"
+
+    def show_page(self, k: str) -> None:
+        for n, f in self.pages.items():
+            if n == k:
+                f.pack(fill="both", expand=True)
+                if n == "history":
+                    self.act_hist_ref()
+                if n in ["temp", "press", "flow"]:
+                    self._ref_combo(n.upper())
             else:
-                frame.pack_forget()
+                f.pack_forget()
 
-    def _init_logic(self):
-        ports = self.engine.get_ports()
-        self.cmb_port["values"] = ports
-        if ports:
-            self.cmb_port.current(0)
+    def _init_logic(self) -> None:
+        self.cmb_p["values"] = self.ctrl.get_ports()
+        if self.cmb_p["values"]:
+            self.cmb_p.current(0)
 
-    # --- Communication Loops ---
-    def toggle_connection(self):
-        if self.btn_connect["text"] == "Connect":
-            port = self.cmb_port.get()
-            if port and self.engine.connect(port):
-                pass
+    # --- Actions ---
+    def do_connect(self) -> None:
+        if self.btn_conn["text"] == "Connect":
+            p = self.cmb_p.get()
+            if p:
+                self.ctrl.connect_port(p)
         else:
-            self.engine.disconnect()
+            self.ctrl.disconnect_port()
 
-    def _process_serial_queues(self):
-        try:
-            while True:
-                connected, msg = self.engine.get_status_queue().get_nowait()
-                if connected:
-                    self.lbl_status.config(text=f"Status: {msg}", foreground="green")
-                    self.btn_connect.config(text="Disconnect", style="Danger.TButton")
-                else:
-                    self.lbl_status.config(text=f"Status: {msg}", foreground="red")
-                    self.btn_connect.config(text="Connect", style="Primary.TButton")
-                    self.btn_test_start.config(
-                        text="Start Test", style="Primary.TButton"
-                    )
-                    self.btn_test_finish.config(state="disabled")
-        except queue.Empty:
-            pass
-
-        try:
-            while True:
-                item = self.engine.get_output_queue().get_nowait()
-                if item[0] == "DATA":
-                    display_data = self.engine.process_incoming_data(item[1])
-                    self.update_live_display(display_data)
-        except queue.Empty:
-            pass
-
-        self.after(100, self._process_serial_queues)
-
-    def _poll_sensor_routine(self):
-        self.engine.send_poll_command()
-        self.after(500, self._poll_sensor_routine)
-
-    # --- UI Updates ---
-    def update_live_display(self, data):
-        self.lbl_flow_val.config(text=f"{data['flow']:.2f}")
-        self.lbl_press_val.config(text=f"{data['press']:.2f}")
-        self.lbl_temp_val.config(text=f"{data['temp']:.2f}")
-
-        if hasattr(self, "lbl_temp_live_cal"):
-            self.lbl_temp_live_cal.config(text=f"{data['raw_temp']:.2f}")
-        if hasattr(self, "lbl_press_live_cal"):
-            self.lbl_press_live_cal.config(text=f"{data['raw_press']:.2f}")
-
-        if self.engine.is_testing:
-            target = self.engine.target_volume
-            accum = data["accum_vol"]
-            if target > 0:
-                pct = (accum / target) * 100
-                self.pb_test["value"] = min(pct, 100)
-                self.lbl_test_progress.config(text=f"{accum:.2f} / {target:.2f} L")
-                if data["target_reached"]:
-                    self.force_stop_test("Target Reached")
-
-    # --- History Logic ---
-    def refresh_history(self):
-        for item in self.tree_hist.get_children():
-            self.tree_hist.delete(item)
-
-        logs = self.engine.fetch_history()
-        for log in logs:
-            row_id = log[0]
-            values = (
-                log[0],
-                log[1],
-                log[2],
-                log[3],
-                log[4],
-                log[5],
-                log[6],
-                f"{log[7]:.2f}%",
-                log[11],
-            )
-            self.tree_hist.insert("", "end", iid=row_id, values=values)
-
-    def delete_selected_log(self):
-        selected = self.tree_hist.selection()
-        if not selected:
-            return
-
-        if messagebox.askyesno("Confirm", f"Delete {len(selected)} logs?"):
-            for row_id in selected:
-                self.engine.delete_history_item(row_id)
-            self.refresh_history()
-
-    # --- Test Interactions ---
-    def handle_test_button(self):
-        if "Start" in self.btn_test_start["text"]:
+    def act_test_start(self) -> None:
+        if "Start" in self.btn_t_start["text"]:
             try:
-                vol = float(self.ent_test_vol.get())
-                if vol <= 0:
+                v = float(self.ent_tgt.get())
+                if v <= 0:
                     raise ValueError
-                self.engine.start_test(vol)
-                self.btn_test_start.config(text="Stop Test", style="Danger.TButton")
-                self.btn_test_finish.config(state="disabled")
-                self.pb_test["value"] = 0
-                self.lbl_test_progress.config(text=f"0.00 / {vol:.2f} L")
+                self.ctrl.start_test(v)
+                self.btn_t_start.config(text="Stop", style="Danger.TButton")
+                self.btn_t_save.config(state="disabled")
+                self.prog_bar["value"] = 0
+                self.lbl_prog.config(text=f"0.00 / {v:.2f} L")
             except:
-                messagebox.showerror("Error", "Invalid Target Volume")
+                messagebox.showerror("Err", "Invalid Target")
         else:
-            self.force_stop_test("User Stopped")
+            self._stop_routine("User Stopped")
 
-    def force_stop_test(self, reason):
-        self.engine.stop_test()
-        self.btn_test_start.config(text="Start Test", style="Primary.TButton")
-        self.btn_test_finish.config(state="normal")
-        messagebox.showinfo("Test Finished", f"Reason: {reason}")
+    def _stop_routine(self, r: str) -> None:
+        self.ctrl.stop_test()
+        self.btn_t_start.config(text="Start", style="Primary.TButton")
+        self.btn_t_save.config(state="normal")
+        messagebox.showinfo("Done", f"Reason: {r}")
 
-    def save_test_result(self):
+    def act_test_save(self) -> None:
         try:
-            init_m = float(self.ent_test_init.get())
-            final_m = float(self.ent_test_final.get())
-
-            res = self.engine.finalize_test_results(init_m, final_m)
+            im = float(self.ent_ini.get())
+            fm = float(self.ent_fin.get())
+            res = self.ctrl.finish_test(im, fm)
 
             msg = (
-                f"Measured (Meter): {res['measured_volume']:.3f} L\n"
-                f"Actual (System): {res['actual_volume']:.3f} L\n"
-                f"Error Rate: {res['error_rate']:.2f}%"
+                f"Meter: {res['measured_volume']:.3f} L\n"
+                f"Real: {res['actual_volume']:.3f} L\n"
+                f"Error: {res['error_rate']:.2f}%"
             )
             if abs(res["error_rate"]) <= 2.0:
-                msg += "\n\n[PASSED]"
+                msg += "\n[PASS]"
             else:
-                msg += "\n\n[FAILED]"
-
+                msg += "\n[FAIL]"
             messagebox.showinfo("Result", msg)
-            self.reset_test_ui()
+            self.act_test_reset()
+        except:
+            messagebox.showerror("Err", "Invalid Inputs")
 
-        except ValueError:
-            messagebox.showerror("Error", "Invalid Meter Readings")
+    def act_test_reset(self) -> None:
+        self.ctrl.stop_test()
+        self.ent_tgt.delete(0, tk.END)
+        self.ent_ini.delete(0, tk.END)
+        self.ent_fin.delete(0, tk.END)
+        self.prog_bar["value"] = 0
+        self.lbl_prog.config(text="0.00 / 0.00 L")
+        self.btn_t_start.config(text="Start", style="Primary.TButton")
+        self.btn_t_save.config(state="disabled")
 
-    def reset_test_ui(self):
-        self.engine.stop_test()
-        self.ent_test_vol.delete(0, tk.END)
-        self.ent_test_init.delete(0, tk.END)
-        self.ent_test_final.delete(0, tk.END)
-        self.pb_test["value"] = 0
-        self.lbl_test_progress.config(text="0.00 / 0.00 L")
-        self.btn_test_start.config(text="Start Test", style="Primary.TButton")
-        self.btn_test_finish.config(state="disabled")
+    def act_hist_ref(self) -> None:
+        for x in self.tree.get_children():
+            self.tree.delete(x)
+        for r in self.ctrl.get_history():
+            # r: 0=id, 1=ts, 2=tgt, 3=ini, 4=fin, 5=meas, 6=act, 7=err, 8=af, 9=ap, 10=at, 11=st
+            v = (r[0], r[1], r[2], r[3], r[4], r[5], r[6], f"{r[7]:.2f}%", r[11])
+            self.tree.insert("", "end", iid=r[0], values=v)
 
-    # --- Calibration Interactions ---
-    def save_generic_cal(self, sensor_type):
-        try:
-            if sensor_type == "TEMP":
-                ref = float(self.ent_temp_ref.get())
-                raw = self.engine.latest_raw_data["temp"]
-                ent_widget = self.ent_temp_ref
-            elif sensor_type == "PRESS":
-                ref = float(self.ent_press_ref.get())
-                raw = self.engine.latest_raw_data["pressure"]
-                ent_widget = self.ent_press_ref
-            else:
-                return
+    def act_hist_del(self) -> None:
+        sel = self.tree.selection()
+        if sel and messagebox.askyesno("Del", f"Delete {len(sel)}?"):
+            for i in sel:
+                self.ctrl.delete_log(int(i))
+            self.act_hist_ref()
 
-            self.engine.save_calibration(sensor_type, raw, ref)
-            self.refresh_cal_combo(sensor_type)
-            ent_widget.delete(0, tk.END)
-            messagebox.showinfo("Success", "Point Saved!")
-        except ValueError:
-            messagebox.showerror("Error", "Invalid Value")
-
-    def start_flow_cal(self):
-        if not self.engine.is_connected():
-            messagebox.showerror("Error", "Not Connected")
-            return
-        self.engine.start_flow_cal()
-        self.btn_flow_save.config(state="disabled")
-        self.lbl_flow_raw_vol.config(text="Recording...")
-        self.lbl_flow_avg_rate.config(text="Recording...")
-
-    def stop_flow_cal(self):
-        raw_vol, avg_flow = self.engine.stop_flow_cal()
-        self.lbl_flow_raw_vol.config(text=f"{raw_vol:.2f}")
-        self.lbl_flow_avg_rate.config(text=f"{avg_flow:.2f}")
-        self.btn_flow_save.config(state="normal")
-
-    def save_flow_calibration(self):
-        try:
-            r_rate = self.ent_flow_rate_ref.get().strip()
-            r_vol = self.ent_flow_ref.get().strip()
-
-            ref_rate = float(r_rate) if r_rate else None
-            ref_vol = float(r_vol) if r_vol else None
-
-            avg, real_ref, gain = self.engine.calculate_and_save_flow_cal(
-                ref_vol, ref_rate
-            )
-
-            self.refresh_cal_combo("FLOW")
-            self.ent_flow_ref.delete(0, tk.END)
-            self.ent_flow_rate_ref.delete(0, tk.END)
-            messagebox.showinfo("Success", f"Gain: {gain:.4f}")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-    def refresh_cal_combo(self, sensor_type):
-        pts = self.engine.get_cal_points(sensor_type)
-        self.cal_map = getattr(self, "cal_map", {})
-        display_vals = []
+    def _ref_combo(self, t: str) -> None:
+        pts = self.ctrl.get_cal_list(t)
+        self.cmap = getattr(self, "cmap", {})
+        lst = []
         for p in pts:
-            s = f"ID:{p[0]} | Ref:{p[2]:.2f} | Sens:{p[1]:.2f}"
-            display_vals.append(s)
-            self.cal_map[s] = p[0]
+            # 0=id, 2=raw, 3=ref
+            s = f"ID:{p[0]} | Raw:{p[2]:.2f} | Ref:{p[3]:.2f}"
+            lst.append(s)
+            self.cmap[s] = p[0]
+        self.refs_cal[t]["c"]["values"] = lst
 
-        widgets = self.cal_widgets.get(sensor_type)
-        if widgets:
-            widgets["combo"]["values"] = display_vals
+    def act_cal_sel(self, t: str) -> None:
+        w = self.refs_cal[t]
+        s = w["c"].get()
+        pid = self.cmap.get(s)
+        if pid:
+            pt = self.ctrl.get_cal_detail(pid)
+            if pt:
+                w["lr"].config(text=f"{pt[3]:.2f}")
+                w["lg"].config(text=f"{pt[4]:.4f}")
 
-    def load_cal_details(self, sensor_type):
-        widgets = self.cal_widgets.get(sensor_type)
-        if not widgets:
-            return
-        sel = widgets["combo"].get()
-        pid = self.cal_map.get(sel)
-        if not pid:
-            return
-        pt = self.engine.get_cal_point_details(pid)
-        if pt:
-            widgets["ref"].config(text=f"{pt[2]:.2f}")
-            widgets["gain"].config(text=f"{pt[3]:.4f}")
+    def act_cal_del(self, t: str) -> None:
+        w = self.refs_cal[t]
+        s = w["c"].get()
+        pid = self.cmap.get(s)
+        if pid and messagebox.askyesno("Confirm", "Delete?"):
+            self.ctrl.del_cal_point(pid)
+            self._ref_combo(t)
+            w["c"].set("")
+            w["lr"].config(text="-")
+            w["lg"].config(text="-")
 
-    def delete_calibration(self, sensor_type):
-        widgets = self.cal_widgets.get(sensor_type)
-        sel = widgets["combo"].get()
-        pid = self.cal_map.get(sel)
-        if pid and messagebox.askyesno("Confirm", "Delete this point?"):
-            self.engine.delete_cal_point(pid)
-            self.refresh_cal_combo(sensor_type)
-            widgets["ref"].config(text="-")
-            widgets["gain"].config(text="-")
-            widgets["combo"].set("")
+    def act_cal_save(self, t: str, k: str) -> None:
+        try:
+            e = getattr(self, f"ent_ref_{k}")
+            rv = float(e.get())
+            raw = 0.0
+            if t == "TEMP":
+                raw = self.ctrl.last_packet["temp"]
+            elif t == "PRESS":
+                raw = self.ctrl.last_packet["pressure"]
+
+            self.ctrl.save_point(t, raw, rv)
+            self._ref_combo(t)
+            e.delete(0, tk.END)
+            messagebox.showinfo("OK", "Saved")
+        except:
+            messagebox.showerror("Err", "Bad Input")
+
+    def act_f_start(self) -> None:
+        if not self.ctrl.is_connected():
+            return messagebox.showerror("Err", "No Serial")
+        self.ctrl.start_flow_cal()
+        self.btn_f_save.config(state="disabled")
+        self.l_f_rv.config(text="...")
+        self.l_f_ra.config(text="...")
+
+    def act_f_stop(self) -> None:
+        v, r = self.ctrl.stop_flow_cal()
+        self.l_f_rv.config(text=f"{v:.2f}")
+        self.l_f_ra.config(text=f"{r:.2f}")
+        self.btn_f_save.config(state="normal")
+
+    def act_f_save(self) -> None:
+        try:
+            rv_s = self.e_f_rv.get().strip()
+            rr_s = self.e_f_rr.get().strip()
+            rv = float(rv_s) if rv_s else None
+            rr = float(rr_s) if rr_s else None
+
+            _, _, g = self.ctrl.calc_save_flow_gain(rv, rr)
+            self._ref_combo("FLOW")
+            self.e_f_rv.delete(0, tk.END)
+            self.e_f_rr.delete(0, tk.END)
+            messagebox.showinfo("OK", f"Gain: {g:.4f}")
+        except Exception as e:
+            messagebox.showerror("Err", str(e))
+
+    # --- Loops ---
+    def _loop_serial(self) -> None:
+        try:
+            while True:
+                c, m = self.ctrl.queue_status().get_nowait()
+                if c:
+                    self.lbl_stat.config(text=f"OK: {m}", foreground="green")
+                    self.btn_conn.config(text="Disconnect", style="Danger.TButton")
+                else:
+                    self.lbl_stat.config(text=f"Err: {m}", foreground="red")
+                    self.btn_conn.config(text="Connect", style="Primary.TButton")
+                    self.act_test_reset()
+        except queue.Empty:
+            pass
+
+        try:
+            while True:
+                typ, dat = self.ctrl.queue_data().get_nowait()
+                if typ == "DATA":
+                    res = self.ctrl.ingest_packet(dat)
+                    self._update_ui_data(res)
+        except queue.Empty:
+            pass
+
+        self.after(100, self._loop_serial)
+
+    def _loop_sensor(self) -> None:
+        self.ctrl.trigger_poll()
+        self.after(500, self._loop_sensor)
+
+    def _update_ui_data(self, d: Dict[str, Any]) -> None:
+        self.card_flow.config(text=f"{d['flow']:.2f}")
+        self.card_pres.config(text=f"{d['press']:.2f}")
+        self.card_temp.config(text=f"{d['temp']:.2f}")
+
+        if hasattr(self, "lbl_live_temp"):
+            self.lbl_live_temp.config(text=f"{d['raw_temp']:.2f}")
+        if hasattr(self, "lbl_live_press"):
+            self.lbl_live_press.config(text=f"{d['raw_press']:.2f}")
+
+        if self.ctrl.flag_testing:
+            tgt = self.ctrl.test_target_vol
+            acc = d["accum_vol"]
+            if tgt > 0:
+                p = (acc / tgt) * 100
+                self.prog_bar["value"] = min(p, 100)
+                self.lbl_prog.config(text=f"{acc:.2f} / {tgt:.2f} L")
+                if d["target_hit"]:
+                    self._stop_routine("Target Hit")
