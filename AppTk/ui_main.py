@@ -17,7 +17,9 @@ class WaterMeterAppTk(tk.Tk):
         super().__init__()
 
         self.title("Portable WMTK Proto")
-        self.geometry("800x480")
+
+        self.geometry("800x420")
+
         self.resizable(False, False)
 
         self.ctrl: WMTKController = WMTKController()
@@ -69,11 +71,11 @@ class WaterMeterAppTk(tk.Tk):
 
         # Header (Logo + Title)
         hdr: ttk.Frame = ttk.Frame(self.sb, style="Sidebar.TFrame")
-        hdr.pack(pady=(10, 5))
+        hdr.pack(pady=(2, 1))
 
         if self.logo_icon:
             ttk.Label(hdr, image=self.logo_icon, style="Sidebar.TLabel").pack(
-                side="top", pady=(0, 5)
+                side="top", pady=(0, 1)
             )
 
         ttk.Label(
@@ -86,7 +88,7 @@ class WaterMeterAppTk(tk.Tk):
 
         # Nav
         nav_f: ttk.Frame = ttk.Frame(self.sb, style="Sidebar.TFrame")
-        nav_f.pack(fill="x", pady=5)
+        nav_f.pack(fill="x", pady=1)
 
         menu = [
             ("Test Mode", "test"),
@@ -102,22 +104,26 @@ class WaterMeterAppTk(tk.Tk):
                 text=txt,
                 style="Nav.TButton",
                 command=lambda k=key: self.show_page(k),
-            ).pack(fill="x", pady=1)
+            ).pack(fill="x", pady=0)
 
+        # Spacer pushes connection box down
         ttk.Frame(self.sb, style="Sidebar.TFrame").pack(fill="both", expand=True)
 
         # Connection
         conn: ttk.Frame = ttk.Frame(self.sb, style="Sidebar.TFrame")
-        conn.pack(side="bottom", fill="x", padx=10, pady=10)
+        conn.pack(side="bottom", fill="x", padx=10, pady=2)
+
         ttk.Label(
             conn, text="Port:", style="Sidebar.TLabel", font=("Segoe UI", 8)
         ).pack(anchor="w")
         self.cmb_p: ttk.Combobox = ttk.Combobox(conn, state="readonly", height=4)
-        self.cmb_p.pack(fill="x", pady=(0, 5))
+        self.cmb_p.pack(fill="x", pady=(0, 1))
+
         self.btn_conn: ttk.Button = ttk.Button(
             conn, text="Connect", style="Primary.TButton", command=self.do_connect
         )
-        self.btn_conn.pack(fill="x")
+        self.btn_conn.pack(fill="x", pady=(2, 0))
+
         self.lbl_stat: ttk.Label = ttk.Label(
             conn,
             text="Disconnected",
@@ -125,10 +131,10 @@ class WaterMeterAppTk(tk.Tk):
             font=("Segoe UI", 8),
             foreground="red",
         )
-        self.lbl_stat.pack(pady=(2, 0))
+        self.lbl_stat.pack(pady=(1, 0))
 
         # Body
-        self.body: ttk.Frame = ttk.Frame(self.container, padding=20)
+        self.body: ttk.Frame = ttk.Frame(self.container, padding=10)
         self.body.pack(side="left", fill="both", expand=True)
 
         self.pages: Dict[str, ttk.Frame] = {}
@@ -144,7 +150,7 @@ class WaterMeterAppTk(tk.Tk):
         p: ttk.Frame = ttk.Frame(self.body)
         self.pages["test"] = p
         ttk.Label(p, text="Automated Test", style="Header.TLabel").pack(
-            anchor="w", pady=(0, 10)
+            anchor="w", pady=(0, 5)
         )
 
         # Cards
@@ -155,12 +161,12 @@ class WaterMeterAppTk(tk.Tk):
         self.card_temp: ttk.Label = self._mk_card(c_frm, "Temp (°C)", "#DC3545")
 
         # Inputs
-        f_frm: ttk.Labelframe = ttk.Labelframe(p, text="Parameters", padding=15)
-        f_frm.pack(fill="x", pady=15)
+        f_frm: ttk.Labelframe = ttk.Labelframe(p, text="Parameters", padding=10)
+        f_frm.pack(fill="x", pady=10)
 
         # Row 1
         r1: ttk.Frame = ttk.Frame(f_frm)
-        r1.pack(fill="x", pady=(0, 10))
+        r1.pack(fill="x", pady=(0, 5))
         ttk.Label(r1, text="1. Target (L):", font=("Segoe UI", 10, "bold")).pack(
             side="left"
         )
@@ -173,7 +179,7 @@ class WaterMeterAppTk(tk.Tk):
         self.ent_ini.pack(side="left", padx=(5, 0))
         self._bind_numpad(self.ent_ini, "Initial Meter")
 
-        ttk.Separator(f_frm, orient="horizontal").pack(fill="x", pady=(0, 10))
+        ttk.Separator(f_frm, orient="horizontal").pack(fill="x", pady=(0, 5))
 
         # Row 2
         r2: ttk.Frame = ttk.Frame(f_frm)
@@ -212,11 +218,11 @@ class WaterMeterAppTk(tk.Tk):
         self.prog_bar: ttk.Progressbar = ttk.Progressbar(
             p, style="Horizontal.TProgressbar", orient="horizontal", mode="determinate"
         )
-        self.prog_bar.pack(fill="x", pady=(10, 5), padx=5)
+        self.prog_bar.pack(fill="x", pady=(5, 2), padx=5)
         self.lbl_prog: ttk.Label = ttk.Label(
             p, text="0.00 / 0.00 L", font=("Segoe UI", 10, "bold"), foreground="#6c757d"
         )
-        self.lbl_prog.pack(pady=(0, 10))
+        self.lbl_prog.pack(pady=(0, 5))
 
     def _build_pg_history(self) -> None:
         p: ttk.Frame = ttk.Frame(self.body)
@@ -233,7 +239,6 @@ class WaterMeterAppTk(tk.Tk):
         ).pack(side="right", padx=5)
 
         cols: Tuple[str, ...] = (
-            "id",
             "ts",
             "tgt",
             "ini",
@@ -248,7 +253,6 @@ class WaterMeterAppTk(tk.Tk):
         )
 
         hdrs = {
-            "id": ("ID", 40),
             "ts": ("Date", 140),
             "tgt": ("Tgt(L)", 60),
             "ini": ("Ini", 60),
@@ -272,7 +276,7 @@ class WaterMeterAppTk(tk.Tk):
     ) -> None:
         p: ttk.Frame = ttk.Frame(self.body)
         self.pages[key] = p
-        ttk.Label(p, text=title, style="Header.TLabel").pack(anchor="w", pady=(0, 15))
+        ttk.Label(p, text=title, style="Header.TLabel").pack(anchor="w", pady=(0, 10))
 
         hf: ttk.Frame = ttk.Frame(p)
         hf.pack(fill="x", pady=5)
@@ -293,8 +297,8 @@ class WaterMeterAppTk(tk.Tk):
             command=lambda s=stype: self.act_cal_del(s),
         ).pack(side="right")
 
-        frm: ttk.Labelframe = ttk.Labelframe(p, text="New Point", padding=20)
-        frm.pack(fill="x", pady=20)
+        frm: ttk.Labelframe = ttk.Labelframe(p, text="New Point", padding=15)
+        frm.pack(fill="x", pady=15)
         frm.columnconfigure(1, weight=1)
 
         ttk.Label(frm, text=f"Sensor ({unit}):").grid(
@@ -323,7 +327,7 @@ class WaterMeterAppTk(tk.Tk):
         p: ttk.Frame = ttk.Frame(self.body)
         self.pages["flow"] = p
         ttk.Label(p, text="Flow Calibration", style="Header.TLabel").pack(
-            anchor="w", pady=(0, 15)
+            anchor="w", pady=(0, 10)
         )
 
         hf: ttk.Frame = ttk.Frame(p)
@@ -349,7 +353,7 @@ class WaterMeterAppTk(tk.Tk):
         mf.pack(fill="both", expand=True, pady=10)
 
         # Left: Cap
-        cf: ttk.Labelframe = ttk.Labelframe(mf, text="1. Capture", padding=15)
+        cf: ttk.Labelframe = ttk.Labelframe(mf, text="1. Capture", padding=10)
         cf.pack(side="left", fill="both", expand=True, padx=(0, 5))
         self.btn_f_start: ttk.Button = ttk.Button(
             cf, text="Start Flow", style="Primary.TButton", command=self.act_f_start
@@ -359,7 +363,7 @@ class WaterMeterAppTk(tk.Tk):
             cf, text="Stop Flow", style="Danger.TButton", command=self.act_f_stop
         )
         self.btn_f_stop.pack(fill="x", pady=5)
-        ttk.Label(cf, text="Raw Vol:").pack(anchor="w", pady=(15, 0))
+        ttk.Label(cf, text="Raw Vol:").pack(anchor="w", pady=(10, 0))
         self.l_f_rv: ttk.Label = ttk.Label(
             cf, text="0.00", font=("Consolas", 14, "bold"), foreground="gray"
         )
@@ -371,15 +375,15 @@ class WaterMeterAppTk(tk.Tk):
         self.l_f_ra.pack(anchor="w")
 
         # Right: Ref
-        rf: ttk.Labelframe = ttk.Labelframe(mf, text="2. Reference", padding=15)
+        rf: ttk.Labelframe = ttk.Labelframe(mf, text="2. Reference", padding=10)
         rf.pack(side="left", fill="both", expand=True, padx=(5, 0))
         ttk.Label(rf, text="A: Volume (L)").pack(anchor="w")
         self.e_f_rv: ttk.Entry = ttk.Entry(rf)
-        self.e_f_rv.pack(fill="x", pady=(0, 10))
+        self.e_f_rv.pack(fill="x", pady=(0, 5))
         self._bind_numpad(self.e_f_rv, "Ref Vol")
         ttk.Label(rf, text="B: Rate (L/h)").pack(anchor="w")
         self.e_f_rr: ttk.Entry = ttk.Entry(rf)
-        self.e_f_rr.pack(fill="x", pady=(0, 15))
+        self.e_f_rr.pack(fill="x", pady=(0, 10))
         self._bind_numpad(self.e_f_rr, "Ref Rate")
         self.btn_f_save: ttk.Button = ttk.Button(
             rf,
@@ -392,7 +396,7 @@ class WaterMeterAppTk(tk.Tk):
 
     # --- Helpers ---
     def _mk_card(self, p: ttk.Frame, t: str, c: str) -> ttk.Label:
-        frm = ttk.Frame(p, style="Card.TFrame", padding=10)
+        frm = ttk.Frame(p, style="Card.TFrame", padding=5)
         frm.pack(side="left", fill="x", expand=True, padx=5)
         ttk.Label(frm, text=t, font=("Segoe UI", 9, "bold"), foreground="gray").pack(
             anchor="w"
@@ -490,7 +494,7 @@ class WaterMeterAppTk(tk.Tk):
             self.tree.delete(x)
         for r in self.ctrl.get_history():
             # r: 0=id, 1=ts, 2=tgt, 3=ini, 4=fin, 5=meas, 6=act, 7=err, 8=af, 9=ap, 10=at, 11=st
-            v = (r[0], r[1], r[2], r[3], r[4], r[5], r[6], f"{r[7]:.2f}%", r[11])
+            v = (r[1], r[2], r[3], r[4], r[5], r[6], f"{r[7]:.2f}%", r[11])
             self.tree.insert("", "end", iid=r[0], values=v)
 
     def act_hist_del(self) -> None:
