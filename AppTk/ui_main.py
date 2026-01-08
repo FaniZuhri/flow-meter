@@ -31,6 +31,8 @@ class WaterMeterAppTk(tk.Tk):
         self._init_ui()
         self._init_logic()
 
+        self.numpad = TouchNumpad(self)
+
         self.after(100, self._loop_serial)
         self.after(500, self._loop_sensor)
 
@@ -409,7 +411,9 @@ class WaterMeterAppTk(tk.Tk):
         w.bind("<Button-1>", lambda e: self._show_numpad(w, t))
 
     def _show_numpad(self, w: ttk.Entry, t: str) -> str:
-        TouchNumpad(self, w, t)
+        # --- FIX: CALL SINGLETON METHOD ---
+        # Instead of creating a new instance, we call .show() on the existing self.numpad
+        self.numpad.show(w, t)
         return "break"
 
     def show_page(self, k: str) -> None:
