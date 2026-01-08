@@ -1,93 +1,102 @@
 import tkinter as tk
 from tkinter import ttk
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Optional
 
 
 ## @class TouchNumpad
-#  @brief A modal, borderless numeric keypad optimized for Raspberry Pi touchscreens.
-#  @details Uses 'overrideredirect' and 'topmost' to ensure visibility over the main application.
+#  @brief A persistent, borderless numeric keypad.
+#  @details Created once and hidden/shown as needed to prevent Window Manager race conditions.
 class TouchNumpad(tk.Toplevel):
 
     ## @brief Constructor.
     #  @param parent The main application window.
-    #  @param target_widget The Entry widget to update.
-    #  @param title The title (unused in borderless mode, but kept for compatibility).
-    def __init__(
-        self, parent: tk.Tk, target_widget: ttk.Entry, title: str = "Input"
-    ) -> None:
+    def __init__(self, parent: tk.Tk) -> None:
         super().__init__(parent)
-        self.target_widget: ttk.Entry = target_widget
+        self.parent = parent
+        self.target_widget: Optional[ttk.Entry] = None
 
-        # 1. Configuration for Kiosk Mode
-        # Remove OS borders/title bar (Crucial for Pi stability)
-        self.overrideredirect(True)
-        # Force window to stay on top of everything
-        self.attributes("-topmost", True)
-
-        self.configure(bg="#e1e1e1")  # Slight border color effect
+        # 1. Window Configuration
+        self.overrideredirect(True)  # Remove OS borders
+        self.attributes("-topmost", True)  # Force on top
+        self.configure(bg="#e1e1e1")
         self.geometry("300x400")
 
-        # 2. Geometry Calculation (Center on Screen)
-        # We use screen dimensions because update_idletasks on parent can be flaky on Pi
-        screen_w: int = self.winfo_screenwidth()
-        screen_h: int = self.winfo_screenheight()
-
-        win_w: int = 300
-        win_h: int = 400
-
-        pos_x: int = (screen_w // 2) - (win_w // 2)
-        pos_y: int = (screen_h // 2) - (win_h // 2)
-
-        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        # Hide initially
+        self.withdraw()
 
         # Internal buffer
-        self.val_buffer: tk.StringVar = tk.StringVar(value=target_widget.get())
+        self.val_buffer: tk.StringVar = tk.StringVar(value="")
 
         self._setup_layout()
 
-        # 3. Activation Sequence (Strict Order)
-        # Ensure the OS draws it before we lock the UI
-        self.update_idletasks()
+        # Bind close event to physical close just in case
+        self.protocol("WM_DELETE_WINDOW", self.hide)
+
+    ## @brief Shows the keypad for a specific target widget.
+    #  @param target_widget The Entry widget to edit.
+    #  @param title Title to display on the keypad header.
+    def show(self, target_widget: ttk.Entry, title: str = "Input") -> None:
+        self.target_widget = target_widget
+        self.val_buffer.set(target_widget.get())
+        self.lbl_title.config(text=title)
+
+        # 1. Position Center Screen
+        sw: int = self.winfo_screenwidth()
+        sh: int = self.winfo_screenheight()
+        w, h = 300, 400
+        x: int = (sw // 2) - (w // 2)
+        y: int = (sh // 2) - (h // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+        # 2. Show Window
         self.deiconify()
         self.lift()
 
-        # 4. Input Grabbing
-        # We try-catch the grab because sometimes on fast clicks it can race condition
+        # 3. Lock Input (Critical Sequence for Pi)
+        # We perform an update to ensure the WM recognizes the window exists
+        # before we try to grab focus.
+        self.update_idletasks()
         try:
-            self.wait_visibility()
             self.grab_set()
-            self.focus_force()  # Force keyboard focus to this window
+            self.focus_force()
         except tk.TclError:
-            pass  # Window might have been closed instantly or race condition
+            pass
+
+    ## @brief Hides the keypad and releases input lock.
+    def hide(self) -> None:
+        # 1. Release Input Lock FIRST
+        self.grab_release()
+
+        # 2. Hide Window
+        self.withdraw()
+
+        # 3. Return focus to parent
+        self.parent.focus_set()
 
     def _setup_layout(self) -> None:
-        # Main Container with padding (simulates a border since we removed OS border)
+        # Main Container
         main_frame: ttk.Frame = ttk.Frame(self, padding=2, style="Card.TFrame")
         main_frame.pack(fill="both", expand=True)
 
-        # Header (Custom Title Bar since we removed the OS one)
+        # Header
         header_frame: ttk.Frame = ttk.Frame(main_frame, style="Sidebar.TFrame")
         header_frame.pack(fill="x", pady=(0, 5))
 
-        lbl_title: ttk.Label = ttk.Label(
+        self.lbl_title = ttk.Label(
             header_frame,
-            text="Input Value",
+            text="Input",
             font=("Segoe UI", 10, "bold"),
             style="Sidebar.TLabel",
         )
-        lbl_title.pack(side="left", padx=10, pady=5)
+        self.lbl_title.pack(side="left", padx=10, pady=5)
 
-        # Close 'X' button
+        # Close Button calls hide(), not destroy()
         btn_close: ttk.Button = ttk.Button(
-            header_frame,
-            text="X",
-            width=3,
-            style="Danger.TButton",
-            command=self.destroy,
+            header_frame, text="X", width=3, style="Danger.TButton", command=self.hide
         )
         btn_close.pack(side="right", padx=2, pady=2)
 
-        # Display Area
+        # Display
         disp_f: ttk.Frame = ttk.Frame(main_frame, padding=5)
         disp_f.pack(fill="x")
 
@@ -101,7 +110,7 @@ class TouchNumpad(tk.Toplevel):
         )
         lbl.pack(fill="x", ipady=10)
 
-        # Buttons
+        # Keypad Grid
         pad_f: ttk.Frame = ttk.Frame(main_frame, padding=5)
         pad_f.pack(fill="both", expand=True)
 
@@ -128,32 +137,35 @@ class TouchNumpad(tk.Toplevel):
             ("OK", 3, 2),
         ]
 
-        # Use existing styles
+        style = ttk.Style()
+        style.configure("Num.TButton", font=("Segoe UI", 14, "bold"), padding=10)
+
         for txt, r, c in keys:
             sp: int = 2 if txt == "OK" else 1
 
-            # Special styling for action buttons
-            style_key: str = "Primary.TButton" if txt == "OK" else "TButton"
-            if txt in ["ESC", "CLR", "BS"]:
-                style_key = "Danger.TButton"
-
-            # Simple wrapper to create a slightly larger font style dynamically if needed
-            # or rely on ui_styles.py defaults. We will stick to standard TButton for digits
-            # but maybe increase font manually if ui_styles doesn't cover specific "Num" style.
-
+            # Button Logic
             cmd: Callable = lambda t=txt: self._handle_press(t)
-            btn: ttk.Button = ttk.Button(pad_f, text=txt, style=style_key, command=cmd)
+
+            # Styling override for numpad specific buttons
+            s_key = "Num.TButton"
+            if txt in ["OK"]:
+                s_key = "Primary.TButton"
+            if txt in ["ESC", "BS", "CLR"]:
+                s_key = "Danger.TButton"
+
+            btn: ttk.Button = ttk.Button(pad_f, text=txt, style=s_key, command=cmd)
             btn.grid(row=r, column=c, columnspan=sp, sticky="nsew", padx=2, pady=2)
 
     def _handle_press(self, key: str) -> None:
         curr: str = self.val_buffer.get()
 
         if key == "OK":
-            self.target_widget.delete(0, tk.END)
-            self.target_widget.insert(0, curr)
-            self.destroy()
+            if self.target_widget:
+                self.target_widget.delete(0, tk.END)
+                self.target_widget.insert(0, curr)
+            self.hide()
         elif key == "ESC":
-            self.destroy()
+            self.hide()
         elif key == "CLR":
             self.val_buffer.set("")
         elif key == "BS":
@@ -161,7 +173,7 @@ class TouchNumpad(tk.Toplevel):
         elif key == ".":
             if "." not in curr:
                 self.val_buffer.set(curr + ".")
-        else:
+        else:  # Numbers
             if curr == "0" and key != ".":
                 self.val_buffer.set(key)
             else:
