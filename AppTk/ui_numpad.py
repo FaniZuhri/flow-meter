@@ -11,10 +11,11 @@ class TouchNumpad(tk.Toplevel):
         self.target_widget: ttk.Entry = target
         self.title(title)
 
+        self.withdraw()
+
         self.geometry("300x400")
         self.resizable(False, False)
         self.transient(parent)
-        self.grab_set()
 
         # Center window
         if parent.winfo_viewable():
@@ -24,6 +25,14 @@ class TouchNumpad(tk.Toplevel):
 
         self.val_buffer: tk.StringVar = tk.StringVar(value=target.get())
         self._setup_layout()
+
+        self.deiconify()
+
+        self.update_idletasks()
+        self.wait_visibility()
+
+        self.grab_set()
+        self.focus_set()
 
     def _setup_layout(self) -> None:
         # Display
