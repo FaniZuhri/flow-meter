@@ -4,39 +4,91 @@ from typing import List, Tuple, Callable
 
 
 ## @class TouchNumpad
-#  @brief Modal numeric keypad for touchscreens.
+#  @brief A modal, borderless numeric keypad optimized for Raspberry Pi touchscreens.
+#  @details Uses 'overrideredirect' and 'topmost' to ensure visibility over the main application.
 class TouchNumpad(tk.Toplevel):
-    def __init__(self, parent: tk.Tk, target: ttk.Entry, title: str = "Input") -> None:
+
+    ## @brief Constructor.
+    #  @param parent The main application window.
+    #  @param target_widget The Entry widget to update.
+    #  @param title The title (unused in borderless mode, but kept for compatibility).
+    def __init__(
+        self, parent: tk.Tk, target_widget: ttk.Entry, title: str = "Input"
+    ) -> None:
         super().__init__(parent)
-        self.target_widget: ttk.Entry = target
-        self.title(title)
+        self.target_widget: ttk.Entry = target_widget
 
-        self.withdraw()
+        # 1. Configuration for Kiosk Mode
+        # Remove OS borders/title bar (Crucial for Pi stability)
+        self.overrideredirect(True)
+        # Force window to stay on top of everything
+        self.attributes("-topmost", True)
 
+        self.configure(bg="#e1e1e1")  # Slight border color effect
         self.geometry("300x400")
-        self.resizable(False, False)
-        self.transient(parent)
 
-        # Center window
-        if parent.winfo_viewable():
-            x: int = parent.winfo_x() + (parent.winfo_width() // 2) - 150
-            y: int = parent.winfo_y() + (parent.winfo_height() // 2) - 200
-            self.geometry(f"+{x}+{y}")
+        # 2. Geometry Calculation (Center on Screen)
+        # We use screen dimensions because update_idletasks on parent can be flaky on Pi
+        screen_w: int = self.winfo_screenwidth()
+        screen_h: int = self.winfo_screenheight()
 
-        self.val_buffer: tk.StringVar = tk.StringVar(value=target.get())
+        win_w: int = 300
+        win_h: int = 400
+
+        pos_x: int = (screen_w // 2) - (win_w // 2)
+        pos_y: int = (screen_h // 2) - (win_h // 2)
+
+        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+
+        # Internal buffer
+        self.val_buffer: tk.StringVar = tk.StringVar(value=target_widget.get())
+
         self._setup_layout()
 
-        self.deiconify()
-
+        # 3. Activation Sequence (Strict Order)
+        # Ensure the OS draws it before we lock the UI
         self.update_idletasks()
-        self.wait_visibility()
+        self.deiconify()
+        self.lift()
 
-        self.grab_set()
-        self.focus_set()
+        # 4. Input Grabbing
+        # We try-catch the grab because sometimes on fast clicks it can race condition
+        try:
+            self.wait_visibility()
+            self.grab_set()
+            self.focus_force()  # Force keyboard focus to this window
+        except tk.TclError:
+            pass  # Window might have been closed instantly or race condition
 
     def _setup_layout(self) -> None:
-        # Display
-        disp_f: ttk.Frame = ttk.Frame(self, padding=10)
+        # Main Container with padding (simulates a border since we removed OS border)
+        main_frame: ttk.Frame = ttk.Frame(self, padding=2, style="Card.TFrame")
+        main_frame.pack(fill="both", expand=True)
+
+        # Header (Custom Title Bar since we removed the OS one)
+        header_frame: ttk.Frame = ttk.Frame(main_frame, style="Sidebar.TFrame")
+        header_frame.pack(fill="x", pady=(0, 5))
+
+        lbl_title: ttk.Label = ttk.Label(
+            header_frame,
+            text="Input Value",
+            font=("Segoe UI", 10, "bold"),
+            style="Sidebar.TLabel",
+        )
+        lbl_title.pack(side="left", padx=10, pady=5)
+
+        # Close 'X' button
+        btn_close: ttk.Button = ttk.Button(
+            header_frame,
+            text="X",
+            width=3,
+            style="Danger.TButton",
+            command=self.destroy,
+        )
+        btn_close.pack(side="right", padx=2, pady=2)
+
+        # Display Area
+        disp_f: ttk.Frame = ttk.Frame(main_frame, padding=5)
         disp_f.pack(fill="x")
 
         lbl: ttk.Label = ttk.Label(
@@ -50,7 +102,7 @@ class TouchNumpad(tk.Toplevel):
         lbl.pack(fill="x", ipady=10)
 
         # Buttons
-        pad_f: ttk.Frame = ttk.Frame(self, padding=5)
+        pad_f: ttk.Frame = ttk.Frame(main_frame, padding=5)
         pad_f.pack(fill="both", expand=True)
 
         for i in range(4):
@@ -76,15 +128,21 @@ class TouchNumpad(tk.Toplevel):
             ("OK", 3, 2),
         ]
 
-        s: ttk.Style = ttk.Style()
-        s.configure("Num.TButton", font=("Segoe UI", 14, "bold"), padding=10)
-
+        # Use existing styles
         for txt, r, c in keys:
             sp: int = 2 if txt == "OK" else 1
+
+            # Special styling for action buttons
+            style_key: str = "Primary.TButton" if txt == "OK" else "TButton"
+            if txt in ["ESC", "CLR", "BS"]:
+                style_key = "Danger.TButton"
+
+            # Simple wrapper to create a slightly larger font style dynamically if needed
+            # or rely on ui_styles.py defaults. We will stick to standard TButton for digits
+            # but maybe increase font manually if ui_styles doesn't cover specific "Num" style.
+
             cmd: Callable = lambda t=txt: self._handle_press(t)
-            btn: ttk.Button = ttk.Button(
-                pad_f, text=txt, style="Num.TButton", command=cmd
-            )
+            btn: ttk.Button = ttk.Button(pad_f, text=txt, style=style_key, command=cmd)
             btn.grid(row=r, column=c, columnspan=sp, sticky="nsew", padx=2, pady=2)
 
     def _handle_press(self, key: str) -> None:
