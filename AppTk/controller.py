@@ -69,7 +69,8 @@ class WMTKController:
     def ingest_packet(self, packet: Dict[str, Any]) -> Dict[str, Any]:
         self.last_packet = packet
 
-        raw_flow: float = packet.get("flow_rate", 0.0)
+        raw_flow_lpm: float = packet.get("flow_rate", 0.0)
+        raw_flow: float = raw_flow_lpm * 60.0  # LPM to LPH
         raw_press: float = packet.get("pressure", 0.0)
         raw_temp: float = packet.get("temp", 0.0)
         curr_total_vol: float = packet.get("total_volume", 0.0)
@@ -123,10 +124,8 @@ class WMTKController:
         self.test_buffer = {"flow": [], "press": [], "temp": []}
         self.accumulated_vol = 0.0
         self.serial.send_command("{S:1}")
-        self.serial.send_command("{B:1,1}")
 
     def stop_test(self) -> None:
-        self.serial.send_command("{B:0,0}")
         self.serial.send_command("{S:0}")
         self.flag_testing = False
 
